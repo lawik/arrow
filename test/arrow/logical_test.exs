@@ -171,6 +171,87 @@ defmodule Arrow.LogicalTest do
       refute Logical.arrays_equal?(a, b, %{0 => utf8(["x", "y"])}, %{0 => utf8(["x", "z"])})
     end
 
+    test "schemas_equivalent? treats dictionary IDs as opaque" do
+      schema_a = %Arrow.Schema{
+        fields: [
+          %Arrow.Field{
+            name: "d",
+            type: %Arrow.Type.Utf8{},
+            nullable: true,
+            dictionary: %Arrow.Type.DictionaryEncoding{
+              id: 0,
+              index_type: %Arrow.Type.Int{bit_width: 32, signed: true},
+              is_ordered: false
+            }
+          }
+        ]
+      }
+
+      schema_b = put_in(schema_a.fields, [
+        %Arrow.Field{hd(schema_a.fields) | dictionary: %Arrow.Type.DictionaryEncoding{
+          id: 99,
+          index_type: %Arrow.Type.Int{bit_width: 32, signed: true},
+          is_ordered: false
+        }}
+      ])
+
+      refute schema_a == schema_b, "test setup: schemas should differ on dict id"
+      assert Logical.schemas_equivalent?(schema_a, schema_b)
+    end
+
+    test "payloads_equivalent? across renumbered dictionary IDs" do
+      base_field = %Arrow.Field{
+        name: "d",
+        type: %Arrow.Type.Utf8{},
+        nullable: true
+      }
+
+      schema_a = %Arrow.Schema{
+        fields: [
+          %Arrow.Field{
+            base_field
+            | dictionary: %Arrow.Type.DictionaryEncoding{
+                id: 7,
+                index_type: %Arrow.Type.Int{bit_width: 32, signed: true},
+                is_ordered: false
+              }
+          }
+        ]
+      }
+
+      schema_b = %Arrow.Schema{
+        fields: [
+          %Arrow.Field{
+            base_field
+            | dictionary: %Arrow.Type.DictionaryEncoding{
+                id: 42,
+                index_type: %Arrow.Type.Int{bit_width: 32, signed: true},
+                is_ordered: false
+              }
+          }
+        ]
+      }
+
+      col_a = %Arrow.Array.Dictionary{dictionary_id: 7, indices: int32([0, 2, 1])}
+      col_b = %Arrow.Array.Dictionary{dictionary_id: 42, indices: int32([0, 2, 1])}
+
+      dict = utf8(["x", "y", "z"])
+
+      payload_a = %{
+        schema: schema_a,
+        dictionaries: %{7 => dict},
+        batches: [%Arrow.RecordBatch{schema: schema_a, length: 3, columns: [col_a]}]
+      }
+
+      payload_b = %{
+        schema: schema_b,
+        dictionaries: %{42 => dict},
+        batches: [%Arrow.RecordBatch{schema: schema_b, length: 3, columns: [col_b]}]
+      }
+
+      assert Logical.payloads_equivalent?(payload_a, payload_b)
+    end
+
     test "batches_equal?" do
       schema = %Arrow.Schema{
         fields: [

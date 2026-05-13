@@ -152,7 +152,15 @@ defmodule Arrow.Logical do
     a.__struct__ == b.__struct__ and to_list(a, dicts_a) == to_list(b, dicts_b)
   end
 
-  @doc "True iff two record batches are logically equal, given their dictionary registries."
+  @doc """
+  True iff two record batches are logically equal.
+
+  Schemas are compared via `schemas_equivalent?/2`, which treats
+  dictionary IDs as opaque labels — producers may assign different IDs
+  to semantically-identical dictionaries. The optional registries are
+  used to resolve `Arrow.Array.Dictionary` columns to their values
+  during comparison.
+  """
   @spec batches_equal?(
           Arrow.RecordBatch.t(),
           Arrow.RecordBatch.t(),
@@ -165,7 +173,7 @@ defmodule Arrow.Logical do
         dicts_a \\ %{},
         dicts_b \\ %{}
       ) do
-    a.schema == b.schema and
+    schemas_equivalent?(a.schema, b.schema) and
       a.length == b.length and
       length(a.columns) == length(b.columns) and
       a.columns
@@ -174,19 +182,128 @@ defmodule Arrow.Logical do
   end
 
   @doc """
-  True iff two dictionary registries are logically equal — same set of
-  ids, and each (id, array) pair is logically equal.
+  True iff a complete payload (schema + dictionaries + batches) is
+  logically equivalent to another. Tolerates differences in dictionary
+  ID assignment between the two sides: two payloads describing the
+  same data with different dictionary IDs compare equal.
   """
-  @spec dictionaries_equal?(dictionaries(), dictionaries()) :: boolean()
-  def dictionaries_equal?(a, b) do
-    Map.keys(a) |> Enum.sort() == Map.keys(b) |> Enum.sort() and
-      Enum.all?(a, fn {id, arr} -> arrays_equal?(arr, Map.fetch!(b, id), a, b) end)
+  @spec payloads_equivalent?(
+          %{schema: Arrow.Schema.t(), dictionaries: dictionaries(), batches: [Arrow.RecordBatch.t()]},
+          %{schema: Arrow.Schema.t(), dictionaries: dictionaries(), batches: [Arrow.RecordBatch.t()]}
+        ) :: boolean()
+  def payloads_equivalent?(
+        %{schema: sa, dictionaries: da, batches: ba},
+        %{schema: sb, dictionaries: db, batches: bb}
+      ) do
+    schemas_equivalent?(sa, sb) and
+      length(ba) == length(bb) and
+      dictionaries_equivalent_via_schemas?(sa, da, sb, db) and
+      Enum.zip(ba, bb)
+      |> Enum.all?(fn {x, y} -> batches_equal?(x, y, da, db) end)
+  end
+
+  @doc """
+  True iff two schemas describe the same logical shape.
+
+  Identical to `==` except that `Arrow.Field.dictionary.id` is treated
+  as an opaque label: two fields where one has `dictionary.id = 0` and
+  the other has `dictionary.id = 7` are still equivalent provided the
+  rest of their dictionary annotation (index_type, is_ordered) and
+  surrounding field structure agrees.
+
+  Use `==` instead if you need strict structural equality.
+  """
+  @spec schemas_equivalent?(Arrow.Schema.t(), Arrow.Schema.t()) :: boolean()
+  def schemas_equivalent?(%Arrow.Schema{} = a, %Arrow.Schema{} = b) do
+    fields_equivalent?(a.fields, b.fields) and a.metadata == b.metadata
+  end
+
+  @doc """
+  True iff two dictionary registries are logically equivalent, given
+  the schemas referring to them.
+
+  Walks the field tree of both schemas in parallel; for every
+  dict-encoded field pair, looks up the corresponding dictionary in
+  each registry by the *field's* ID, then compares the dictionary
+  arrays logically. ID values themselves are never compared directly.
+  """
+  @spec dictionaries_equivalent_via_schemas?(
+          Arrow.Schema.t(),
+          dictionaries(),
+          Arrow.Schema.t(),
+          dictionaries()
+        ) :: boolean()
+  def dictionaries_equivalent_via_schemas?(%Arrow.Schema{} = sa, da, %Arrow.Schema{} = sb, db) do
+    sa.fields
+    |> Enum.zip(sb.fields)
+    |> Enum.flat_map(fn {a, b} -> field_dict_id_pairs(a, b) end)
+    |> Enum.all?(fn {id_a, id_b} ->
+      case {Map.get(da, id_a), Map.get(db, id_b)} do
+        {nil, _} -> false
+        {_, nil} -> false
+        {arr_a, arr_b} -> arrays_equal?(arr_a, arr_b, da, db)
+      end
+    end)
   end
 
   @doc "Same as `arrays_equal?/2`, kept generic for both array and batch inputs."
   @spec equal?(term(), term()) :: boolean()
   def equal?(%Arrow.RecordBatch{} = a, %Arrow.RecordBatch{} = b), do: batches_equal?(a, b)
   def equal?(a, b) when is_struct(a) and is_struct(b), do: arrays_equal?(a, b)
+
+  ## ---------------------------------------------------------------------
+  ## Schema walking helpers
+  ## ---------------------------------------------------------------------
+
+  defp fields_equivalent?(list_a, list_b) when length(list_a) == length(list_b) do
+    list_a
+    |> Enum.zip(list_b)
+    |> Enum.all?(fn {a, b} -> field_equivalent?(a, b) end)
+  end
+
+  defp fields_equivalent?(_, _), do: false
+
+  defp field_equivalent?(%Arrow.Field{} = a, %Arrow.Field{} = b) do
+    a.name == b.name and
+      a.type == b.type and
+      a.nullable == b.nullable and
+      a.metadata == b.metadata and
+      fields_equivalent?(a.children, b.children) and
+      dictionary_encoding_equivalent?(a.dictionary, b.dictionary)
+  end
+
+  defp dictionary_encoding_equivalent?(nil, nil), do: true
+
+  defp dictionary_encoding_equivalent?(
+         %Arrow.Type.DictionaryEncoding{} = a,
+         %Arrow.Type.DictionaryEncoding{} = b
+       ) do
+    a.index_type == b.index_type and a.is_ordered == b.is_ordered
+  end
+
+  defp dictionary_encoding_equivalent?(_, _), do: false
+
+  # Returns a flat list of {id_in_a, id_in_b} for every dict-encoded
+  # field pair across the parallel field trees.
+  defp field_dict_id_pairs(%Arrow.Field{dictionary: nil} = a, %Arrow.Field{dictionary: nil} = b) do
+    a.children
+    |> Enum.zip(b.children)
+    |> Enum.flat_map(fn {x, y} -> field_dict_id_pairs(x, y) end)
+  end
+
+  defp field_dict_id_pairs(
+         %Arrow.Field{dictionary: %{id: ida}} = a,
+         %Arrow.Field{dictionary: %{id: idb}} = b
+       ) do
+    [
+      {ida, idb}
+      | a.children
+        |> Enum.zip(b.children)
+        |> Enum.flat_map(fn {x, y} -> field_dict_id_pairs(x, y) end)
+    ]
+  end
+
+  defp field_dict_id_pairs(_, _), do: []
 
   ## ---------------------------------------------------------------------
   ## Internals
