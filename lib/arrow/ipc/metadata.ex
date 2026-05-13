@@ -24,7 +24,7 @@ defmodule Arrow.Ipc.Metadata do
   RecordBatch metadata table, plus the Message envelope.
   """
 
-  alias Arrow.Ipc.Flatbuf
+  alias Arrow.Ipc.{Body, Flatbuf}
   alias Arrow.Ipc.Flatbuf.Wire
 
   ## ---------------------------------------------------------------------
@@ -54,6 +54,60 @@ defmodule Arrow.Ipc.Metadata do
     pos = Wire.root_table_pos(binary)
     fb = Flatbuf.Schema.decode_at(binary, pos)
     {:ok, from_fb_schema(fb)}
+  rescue
+    e -> {:error, e}
+  end
+
+  ## ---------------------------------------------------------------------
+  ## RecordBatch
+  ## ---------------------------------------------------------------------
+
+  @doc """
+  Encodes an `Arrow.RecordBatch` into a standalone FlatBuffers buffer
+  rooted at `Arrow.Ipc.Flatbuf.RecordBatch`, plus the raw 8-byte-aligned
+  body bytes those descriptors point into.
+
+  The two binaries are independent: the metadata travels in the IPC
+  message envelope, the body bytes travel after it.
+  """
+  @spec encode_record_batch(Arrow.RecordBatch.t()) ::
+          %{metadata: binary(), body: binary(), length: non_neg_integer()}
+  def encode_record_batch(%Arrow.RecordBatch{} = batch) do
+    %{length: row_count, nodes: nodes, buffers: buffers, body: body} = Body.encode(batch)
+
+    builder = Wire.new_builder()
+
+    {builder, addr} =
+      Flatbuf.RecordBatch.build(builder, %{
+        length: row_count,
+        nodes: nodes,
+        buffers: buffers
+      })
+
+    metadata =
+      builder
+      |> Wire.finish(addr)
+      |> Wire.to_binary()
+
+    %{metadata: metadata, body: body, length: row_count}
+  end
+
+  @doc """
+  Decodes a FlatBuffers buffer whose root is
+  `Arrow.Ipc.Flatbuf.RecordBatch`, combined with a previously-parsed
+  `Arrow.Schema` and the body bytes, into an `Arrow.RecordBatch`.
+  """
+  @spec decode_record_batch(binary(), binary(), Arrow.Schema.t()) ::
+          {:ok, Arrow.RecordBatch.t()} | {:error, term()}
+  def decode_record_batch(metadata, body, %Arrow.Schema{} = schema)
+      when is_binary(metadata) and is_binary(body) do
+    pos = Wire.root_table_pos(metadata)
+    fb = Flatbuf.RecordBatch.decode_at(metadata, pos)
+
+    nodes = Enum.map(fb.nodes, fn n -> %{length: n.length, null_count: n.null_count} end)
+    buffers = Enum.map(fb.buffers, fn b -> %{offset: b.offset, length: b.length} end)
+
+    {:ok, Body.decode(schema, fb.length, nodes, buffers, body)}
   rescue
     e -> {:error, e}
   end
