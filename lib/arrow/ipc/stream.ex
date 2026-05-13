@@ -40,26 +40,37 @@ defmodule Arrow.Ipc.Stream do
   @version :V5
 
   @doc """
-  Builds a complete Arrow IPC stream from a schema and zero or more
-  record batches.
+  Builds a complete Arrow IPC stream from a schema, optional dictionaries
+  registry, and zero or more record batches.
   """
-  @spec encode(Arrow.Schema.t(), [Arrow.RecordBatch.t()]) :: binary()
-  def encode(%Arrow.Schema{} = schema, batches) when is_list(batches) do
+  @spec encode(
+          Arrow.Schema.t(),
+          [Arrow.RecordBatch.t()],
+          %{optional(non_neg_integer()) => Arrow.Array.t()}
+        ) :: binary()
+  def encode(%Arrow.Schema{} = schema, batches, dictionaries \\ %{})
+      when is_list(batches) and is_map(dictionaries) do
     schema_frame = encode_schema_message(schema)
+    dict_frames = encode_dictionary_messages(schema, dictionaries)
     batch_frames = Enum.map(batches, &encode_record_batch_message/1)
 
-    IO.iodata_to_binary([schema_frame, batch_frames, eos()])
+    IO.iodata_to_binary([schema_frame, dict_frames, batch_frames, eos()])
   end
 
   @doc """
   Parses a complete Arrow IPC stream binary into `{:ok, %{schema:,
-  batches:}}` or `{:error, reason}`.
+  dictionaries:, batches:}}` or `{:error, reason}`.
   """
   @spec decode(binary()) ::
-          {:ok, %{schema: Arrow.Schema.t(), batches: [Arrow.RecordBatch.t()]}}
+          {:ok,
+           %{
+             schema: Arrow.Schema.t(),
+             dictionaries: %{optional(non_neg_integer()) => Arrow.Array.t()},
+             batches: [Arrow.RecordBatch.t()]
+           }}
           | {:error, term()}
   def decode(binary) when is_binary(binary) do
-    {:ok, do_decode(binary, nil, [])}
+    {:ok, do_decode(binary, nil, %{}, [])}
   rescue
     e -> {:error, e}
   end
@@ -106,6 +117,30 @@ defmodule Arrow.Ipc.Stream do
   end
 
   @doc """
+  Builds a single DictionaryBatch message frame from a dictionary id
+  and its values array. Returns iodata + framing-inclusive metadata
+  length + body length.
+  """
+  @spec dictionary_batch_message_frame(non_neg_integer(), Arrow.Array.t()) ::
+          {iodata(), non_neg_integer(), non_neg_integer()}
+  def dictionary_batch_message_frame(id, array) when is_struct(array) do
+    %{nodes: nodes, buffers: buffers, body: body} = Body.encode_array(array)
+    row_count = Arrow.Array.length(array)
+
+    dict_batch_map = %{
+      id: id,
+      data: %{length: row_count, nodes: nodes, buffers: buffers},
+      isDelta: false
+    }
+
+    metadata =
+      build_message_metadata({:DictionaryBatch, dict_batch_map}, byte_size(body))
+
+    {iodata, meta_len} = frame(metadata, body)
+    {iodata, meta_len, byte_size(body)}
+  end
+
+  @doc """
   End-of-stream marker: continuation marker followed by a zero length.
   """
   @spec eos() :: binary()
@@ -120,6 +155,37 @@ defmodule Arrow.Ipc.Stream do
     {iodata, _meta_len, _body_len} = record_batch_message_frame(batch)
     iodata
   end
+
+  defp encode_dictionary_messages(%Arrow.Schema{} = schema, dictionaries)
+       when is_map(dictionaries) do
+    # Emit one DictionaryBatch message per (id, array) pair. Sort by id
+    # for deterministic output.
+    dictionaries
+    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.map(fn {id, array} ->
+      field =
+        find_field_by_dict_id(schema, id) ||
+          raise(ArgumentError, "dictionary id #{id} has no referencing field in schema")
+
+      _ = field
+      {iodata, _meta_len, _body_len} = dictionary_batch_message_frame(id, array)
+      iodata
+    end)
+  end
+
+  defp find_field_by_dict_id(%Arrow.Schema{fields: fields}, target),
+    do: walk_for_dict(fields, target)
+
+  defp walk_for_dict(fields, target) when is_list(fields) do
+    Enum.find_value(fields, fn f -> walk_for_dict(f, target) end)
+  end
+
+  defp walk_for_dict(%Arrow.Field{dictionary: %{id: id}} = f, target) when id == target, do: f
+
+  defp walk_for_dict(%Arrow.Field{children: children}, target),
+    do: walk_for_dict(children, target)
+
+  defp walk_for_dict(_, _), do: nil
 
   defp build_message_metadata(header, body_length) do
     builder = Wire.new_builder()
@@ -157,52 +223,54 @@ defmodule Arrow.Ipc.Stream do
   ## Decode
   ## ---------------------------------------------------------------------
 
-  defp do_decode(<<>>, schema, batches), do: build_result(schema, batches)
+  defp do_decode(<<>>, schema, dicts, batches), do: build_result(schema, dicts, batches)
 
   # End-of-stream: continuation + zero length.
   defp do_decode(
          <<@continuation::little-32, 0::little-signed-32, _rest::binary>>,
          schema,
+         dicts,
          batches
        ) do
-    build_result(schema, batches)
+    build_result(schema, dicts, batches)
   end
 
   # Standard framing with continuation marker.
   defp do_decode(
          <<@continuation::little-32, len::little-signed-32, rest::binary>>,
          schema,
+         dicts,
          batches
        )
        when len > 0 do
-    consume_frame(rest, len, schema, batches)
+    consume_frame(rest, len, schema, dicts, batches)
   end
 
   # Legacy framing without continuation marker. The first u32 is the length.
-  defp do_decode(<<0::little-32, _rest::binary>>, schema, batches) do
+  defp do_decode(<<0::little-32, _rest::binary>>, schema, dicts, batches) do
     # Zero length without continuation = end of stream.
-    build_result(schema, batches)
+    build_result(schema, dicts, batches)
   end
 
-  defp do_decode(<<len::little-signed-32, rest::binary>>, schema, batches) when len > 0 do
-    consume_frame(rest, len, schema, batches)
+  defp do_decode(<<len::little-signed-32, rest::binary>>, schema, dicts, batches) when len > 0 do
+    consume_frame(rest, len, schema, dicts, batches)
   end
 
-  defp consume_frame(rest, metadata_len, schema, batches) do
+  defp consume_frame(rest, metadata_len, schema, dicts, batches) do
     <<metadata_padded::binary-size(metadata_len), after_metadata::binary>> = rest
     fb_message = decode_message_metadata(metadata_padded)
     body_len = fb_message.bodyLength
 
     <<body::binary-size(body_len), after_body::binary>> = after_metadata
 
-    dispatch_message(fb_message, body, after_body, schema, batches)
+    dispatch_message(fb_message, body, after_body, schema, dicts, batches)
   end
 
-  defp dispatch_message(fb_message, body, rest, schema, batches) do
+  defp dispatch_message(fb_message, body, rest, schema, dicts, batches) do
     case fb_message.header do
       {:Schema, fb_schema} ->
         new_schema = Metadata.schema_from_fb_struct(fb_schema)
-        do_decode(rest, new_schema, batches)
+        do_decode(rest, new_schema, dicts, batches)
 
       {:RecordBatch, fb_rb} ->
         if schema == nil do
@@ -212,10 +280,40 @@ defmodule Arrow.Ipc.Stream do
         nodes = Enum.map(fb_rb.nodes, fn n -> %{length: n.length, null_count: n.null_count} end)
         buffers = Enum.map(fb_rb.buffers, fn b -> %{offset: b.offset, length: b.length} end)
         batch = Body.decode(schema, fb_rb.length, nodes, buffers, body)
-        do_decode(rest, schema, [batch | batches])
+        do_decode(rest, schema, dicts, [batch | batches])
 
-      {:DictionaryBatch, _} ->
-        raise ArgumentError, "DictionaryBatch messages are not yet supported"
+      {:DictionaryBatch, fb_db} ->
+        if schema == nil do
+          raise ArgumentError, "DictionaryBatch message before Schema"
+        end
+
+        if fb_db.isDelta do
+          raise ArgumentError, "delta DictionaryBatch is not yet supported"
+        end
+
+        field =
+          find_field_by_dict_id(schema, fb_db.id) ||
+            raise(ArgumentError, "DictionaryBatch references unknown id #{fb_db.id}")
+
+        # Build a single-field schema-less decode: the dictionary
+        # values are decoded as the field's *value* type (we strip the
+        # dictionary annotation so we don't recurse into it).
+        value_field = %Arrow.Field{
+          name: field.name,
+          type: field.type,
+          nullable: field.nullable,
+          children: field.children,
+          metadata: field.metadata
+        }
+
+        nodes =
+          Enum.map(fb_db.data.nodes, fn n -> %{length: n.length, null_count: n.null_count} end)
+
+        buffers =
+          Enum.map(fb_db.data.buffers, fn b -> %{offset: b.offset, length: b.length} end)
+
+        array = Body.decode_array_buffers(value_field, nodes, buffers, body)
+        do_decode(rest, schema, Map.put(dicts, fb_db.id, array), batches)
 
       {:Tensor, _} ->
         raise ArgumentError, "Tensor messages are out of scope for the stream reader"
@@ -233,9 +331,10 @@ defmodule Arrow.Ipc.Stream do
     Flatbuf.Message.decode_at(binary, pos)
   end
 
-  defp build_result(nil, _batches), do: raise(ArgumentError, "stream ended before Schema message")
+  defp build_result(nil, _dicts, _batches),
+    do: raise(ArgumentError, "stream ended before Schema message")
 
-  defp build_result(schema, batches) do
-    %{schema: schema, batches: Enum.reverse(batches)}
+  defp build_result(schema, dicts, batches) do
+    %{schema: schema, dictionaries: dicts, batches: Enum.reverse(batches)}
   end
 end

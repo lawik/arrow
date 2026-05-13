@@ -50,19 +50,36 @@ defmodule Arrow.Ipc.File do
   ## ---------------------------------------------------------------------
 
   @doc """
-  Encodes a schema and zero or more record batches into a complete
-  Arrow IPC file as a binary.
+  Encodes a schema, an optional dictionaries registry, and zero or more
+  record batches into a complete Arrow IPC file as a binary.
   """
-  @spec encode(Arrow.Schema.t(), [Arrow.RecordBatch.t()]) :: binary()
-  def encode(%Arrow.Schema{} = schema, batches) when is_list(batches) do
+  @spec encode(
+          Arrow.Schema.t(),
+          [Arrow.RecordBatch.t()],
+          %{optional(non_neg_integer()) => Arrow.Array.t()}
+        ) :: binary()
+  def encode(%Arrow.Schema{} = schema, batches, dictionaries \\ %{})
+      when is_list(batches) and is_map(dictionaries) do
     {schema_frame, _schema_meta_len} = Stream.schema_message_frame(schema)
     schema_frame_bin = IO.iodata_to_binary(schema_frame)
 
     offset_after_magic = byte_size(@magic)
     offset_after_schema = offset_after_magic + byte_size(schema_frame_bin)
 
-    {batch_frame_iolist_rev, blocks_rev, _next_off} =
-      Enum.reduce(batches, {[], [], offset_after_schema}, fn batch, {chunks, blocks, off} ->
+    # Dictionary messages first, then record batches.
+    {dict_chunks_rev, dict_blocks_rev, offset_after_dicts} =
+      dictionaries
+      |> Enum.sort_by(&elem(&1, 0))
+      |> Enum.reduce({[], [], offset_after_schema}, fn {id, array}, {chunks, blocks, off} ->
+        {iodata, meta_len, body_len} = Stream.dictionary_batch_message_frame(id, array)
+        chunk_bin = IO.iodata_to_binary(iodata)
+        block = %{offset: off, metaDataLength: meta_len, bodyLength: body_len}
+        next_off = off + byte_size(chunk_bin)
+        {[chunk_bin | chunks], [block | blocks], next_off}
+      end)
+
+    {batch_chunks_rev, batch_blocks_rev, _final_off} =
+      Enum.reduce(batches, {[], [], offset_after_dicts}, fn batch, {chunks, blocks, off} ->
         {iodata, meta_len, body_len} = Stream.record_batch_message_frame(batch)
         chunk_bin = IO.iodata_to_binary(iodata)
         block = %{offset: off, metaDataLength: meta_len, bodyLength: body_len}
@@ -70,14 +87,17 @@ defmodule Arrow.Ipc.File do
         {[chunk_bin | chunks], [block | blocks], next_off}
       end)
 
-    batch_chunks = Enum.reverse(batch_frame_iolist_rev)
-    blocks = Enum.reverse(blocks_rev)
+    dict_chunks = Enum.reverse(dict_chunks_rev)
+    dict_blocks = Enum.reverse(dict_blocks_rev)
+    batch_chunks = Enum.reverse(batch_chunks_rev)
+    batch_blocks = Enum.reverse(batch_blocks_rev)
 
-    footer_bin = build_footer(schema, blocks)
+    footer_bin = build_footer(schema, dict_blocks, batch_blocks)
 
     IO.iodata_to_binary([
       @magic,
       schema_frame_bin,
+      dict_chunks,
       batch_chunks,
       Stream.eos(),
       footer_bin,
@@ -86,14 +106,14 @@ defmodule Arrow.Ipc.File do
     ])
   end
 
-  defp build_footer(%Arrow.Schema{} = schema, batch_blocks) do
+  defp build_footer(%Arrow.Schema{} = schema, dict_blocks, batch_blocks) do
     builder = Wire.new_builder()
 
     {builder, addr} =
       Flatbuf.Footer.build(builder, %{
         version: @version,
         schema: Metadata.schema_to_fb_map(schema),
-        dictionaries: [],
+        dictionaries: dict_blocks,
         recordBatches: batch_blocks
       })
 
@@ -107,11 +127,16 @@ defmodule Arrow.Ipc.File do
   ## ---------------------------------------------------------------------
 
   @doc """
-  Parses an Arrow IPC file binary into `{:ok, %{schema:, batches:}}` or
-  `{:error, reason}`.
+  Parses an Arrow IPC file binary into `{:ok, %{schema:, dictionaries:,
+  batches:}}` or `{:error, reason}`.
   """
   @spec decode(binary()) ::
-          {:ok, %{schema: Arrow.Schema.t(), batches: [Arrow.RecordBatch.t()]}}
+          {:ok,
+           %{
+             schema: Arrow.Schema.t(),
+             dictionaries: %{optional(non_neg_integer()) => Arrow.Array.t()},
+             batches: [Arrow.RecordBatch.t()]
+           }}
           | {:error, term()}
   def decode(binary) when is_binary(binary) do
     {:ok, do_decode(binary)}
@@ -142,35 +167,26 @@ defmodule Arrow.Ipc.File do
       binary
 
     fb_footer = Flatbuf.Footer.decode_at(footer_bin, Wire.root_table_pos(footer_bin))
-
-    if length(fb_footer.dictionaries || []) > 0 do
-      raise ArgumentError, "DictionaryBatch messages in file format are not yet supported"
-    end
-
     schema = Metadata.schema_from_fb_struct(fb_footer.schema)
+
+    dictionaries =
+      (fb_footer.dictionaries || [])
+      |> Enum.reject(&is_nil/1)
+      |> Enum.reduce(%{}, fn block, acc ->
+        {id, array} = decode_dictionary_block(binary, block, schema)
+        Map.put(acc, id, array)
+      end)
 
     batches =
       fb_footer.recordBatches
       |> Enum.reject(&is_nil/1)
       |> Enum.map(fn block -> decode_batch_block(binary, block, schema) end)
 
-    %{schema: schema, batches: batches}
+    %{schema: schema, dictionaries: dictionaries, batches: batches}
   end
 
   defp decode_batch_block(binary, block, schema) do
-    # The block's `offset` points at the continuation marker. The
-    # framing prefix is 8 bytes (continuation + length), then the
-    # padded metadata bytes (metaDataLength - 8), then the body bytes
-    # (bodyLength).
-    off = block.offset
-    meta_len_with_prefix = block.metaDataLength
-    body_len = block.bodyLength
-    meta_bytes_len = meta_len_with_prefix - 8
-
-    <<_::binary-size(off + 8), metadata::binary-size(meta_bytes_len),
-      body::binary-size(body_len), _rest::binary>> = binary
-
-    fb_message = Flatbuf.Message.decode_at(metadata, Wire.root_table_pos(metadata))
+    {fb_message, body} = read_block(binary, block)
 
     case fb_message.header do
       {:RecordBatch, fb_rb} ->
@@ -182,4 +198,66 @@ defmodule Arrow.Ipc.File do
         raise ArgumentError, "file Block points at non-RecordBatch message: #{inspect(other)}"
     end
   end
+
+  defp decode_dictionary_block(binary, block, schema) do
+    {fb_message, body} = read_block(binary, block)
+
+    case fb_message.header do
+      {:DictionaryBatch, fb_db} ->
+        if fb_db.isDelta do
+          raise ArgumentError, "delta DictionaryBatch is not yet supported"
+        end
+
+        field =
+          find_field_by_dict_id(schema, fb_db.id) ||
+            raise(ArgumentError, "DictionaryBatch references unknown id #{fb_db.id}")
+
+        value_field = %Arrow.Field{
+          name: field.name,
+          type: field.type,
+          nullable: field.nullable,
+          children: field.children,
+          metadata: field.metadata
+        }
+
+        nodes =
+          Enum.map(fb_db.data.nodes, fn n -> %{length: n.length, null_count: n.null_count} end)
+
+        buffers =
+          Enum.map(fb_db.data.buffers, fn b -> %{offset: b.offset, length: b.length} end)
+
+        array = Body.decode_array_buffers(value_field, nodes, buffers, body)
+        {fb_db.id, array}
+
+      other ->
+        raise ArgumentError, "dictionary Block points at non-DictionaryBatch: #{inspect(other)}"
+    end
+  end
+
+  defp read_block(binary, block) do
+    off = block.offset
+    meta_len_with_prefix = block.metaDataLength
+    body_len = block.bodyLength
+    meta_bytes_len = meta_len_with_prefix - 8
+
+    <<_::binary-size(off + 8), metadata::binary-size(meta_bytes_len),
+      body::binary-size(body_len), _rest::binary>> = binary
+
+    fb_message = Flatbuf.Message.decode_at(metadata, Wire.root_table_pos(metadata))
+    {fb_message, body}
+  end
+
+  defp find_field_by_dict_id(%Arrow.Schema{fields: fields}, target),
+    do: walk_for_dict(fields, target)
+
+  defp walk_for_dict(fields, target) when is_list(fields) do
+    Enum.find_value(fields, fn f -> walk_for_dict(f, target) end)
+  end
+
+  defp walk_for_dict(%Arrow.Field{dictionary: %{id: id}} = f, target) when id == target, do: f
+
+  defp walk_for_dict(%Arrow.Field{children: children}, target),
+    do: walk_for_dict(children, target)
+
+  defp walk_for_dict(_, _), do: nil
 end

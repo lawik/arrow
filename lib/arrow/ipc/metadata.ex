@@ -158,13 +158,10 @@ defmodule Arrow.Ipc.Metadata do
       name: f.name,
       nullable: f.nullable,
       type: type_to_fb(f.type),
+      dictionary: dictionary_to_fb(f.dictionary),
       children: Enum.map(f.children, &to_fb_field/1),
       custom_metadata: metadata_to_fb(f.metadata)
     }
-  end
-
-  defp from_fb_field(%Flatbuf.Field{dictionary: dict}) when not is_nil(dict) do
-    raise ArgumentError, "dictionary-encoded fields are not yet supported"
   end
 
   defp from_fb_field(%Flatbuf.Field{} = f) do
@@ -172,8 +169,32 @@ defmodule Arrow.Ipc.Metadata do
       name: f.name,
       nullable: f.nullable,
       type: type_from_fb(f.type),
+      dictionary: dictionary_from_fb(f.dictionary),
       children: f.children |> reject_nils() |> Enum.map(&from_fb_field/1),
       metadata: metadata_from_fb(f.custom_metadata)
+    }
+  end
+
+  defp dictionary_to_fb(nil), do: nil
+
+  defp dictionary_to_fb(%Arrow.Type.DictionaryEncoding{} = d) do
+    %{
+      id: d.id,
+      indexType: %{bitWidth: d.index_type.bit_width, is_signed: d.index_type.signed},
+      isOrdered: d.is_ordered
+    }
+  end
+
+  defp dictionary_from_fb(nil), do: nil
+
+  defp dictionary_from_fb(%Flatbuf.DictionaryEncoding{} = d) do
+    %Arrow.Type.DictionaryEncoding{
+      id: d.id,
+      index_type: %Arrow.Type.Int{
+        bit_width: d.indexType.bitWidth,
+        signed: d.indexType.is_signed
+      },
+      is_ordered: d.isOrdered
     }
   end
 

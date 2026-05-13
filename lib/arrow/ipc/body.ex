@@ -77,6 +77,33 @@ defmodule Arrow.Ipc.Body do
   end
 
   @doc """
+  Encodes a single array's buffers (no surrounding RecordBatch). Used by
+  the IPC layer to produce a DictionaryBatch body.
+  """
+  @spec encode_array(Arrow.Array.t()) ::
+          %{nodes: [node_desc()], buffers: [buffer_desc()], body: binary()}
+  def encode_array(array) when is_struct(array) do
+    {nodes_rev, bufs_rev, body_iolist, _total} = encode_array(array, {[], [], [], 0})
+
+    %{
+      nodes: Enum.reverse(nodes_rev),
+      buffers: Enum.reverse(bufs_rev),
+      body: IO.iodata_to_binary(body_iolist)
+    }
+  end
+
+  @doc """
+  Decodes a single array out of pre-extracted descriptors + body bytes.
+  Used by the IPC layer for DictionaryBatch decoding.
+  """
+  @spec decode_array_buffers(Field.t(), [node_desc()], [buffer_desc()], binary()) ::
+          Arrow.Array.t()
+  def decode_array_buffers(%Field{} = field, nodes, buffers, body) do
+    {array, [], []} = decode_array(field, nodes, buffers, body)
+    array
+  end
+
+  @doc """
   Reverses `encode/1`: takes the schema, row count, and the descriptor +
   body produced by an encoder (ours or another implementation), and
   reconstructs the `RecordBatch`.
@@ -103,6 +130,12 @@ defmodule Arrow.Ipc.Body do
 
   defp encode_array(%Array.Null{length: n}, {ns, bs, body, off}) do
     {[node(n, n) | ns], bs, body, off}
+  end
+
+  defp encode_array(%Array.Dictionary{indices: indices}, acc) do
+    # The body for a dictionary-encoded column is just the indices.
+    # The dictionary values travel separately as a DictionaryBatch.
+    encode_array(indices, acc)
   end
 
   defp encode_array(%Array.Bool{} = a, acc) do
@@ -258,6 +291,27 @@ defmodule Arrow.Ipc.Body do
   ## ---------------------------------------------------------------------
   ## Decode walk
   ## ---------------------------------------------------------------------
+
+  defp decode_array(
+         %Field{dictionary: %Arrow.Type.DictionaryEncoding{id: id, index_type: idx_type}},
+         nodes,
+         buffers,
+         body
+       ) do
+    # Decode using the field's index type, then wrap in Dictionary.
+    # The field passed to the inner decoder must NOT carry the
+    # dictionary annotation, or we'd recurse forever.
+    inner_field = %Field{
+      name: "indices",
+      type: idx_type,
+      nullable: true,
+      children: [],
+      metadata: %{}
+    }
+
+    {indices, ns2, bs2} = decode_array(inner_field, nodes, buffers, body)
+    {%Array.Dictionary{dictionary_id: id, indices: indices}, ns2, bs2}
+  end
 
   defp decode_array(%Field{type: %Arrow.Type.Null{}}, [n | ns], bs, _body) do
     {%Array.Null{length: n.length}, ns, bs}
