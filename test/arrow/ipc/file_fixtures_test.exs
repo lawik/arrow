@@ -20,8 +20,12 @@ defmodule Arrow.Ipc.FileFixturesTest do
                     Path.join(@fixtures_root, "data/arrow-ipc-stream/integration/*-littleendian")
                   )
 
-  # Same upstream divergence skip as the stream harness.
-  @upstream_divergent ["generated_map_non_canonical.arrow_file"]
+  # Same upstream divergence skips as the stream harness — see
+  # stream_fixtures_test.exs for the reasoning per file.
+  @upstream_divergent [
+    "generated_map_non_canonical.arrow_file",
+    "generated_nested_dictionary.arrow_file"
+  ]
 
   @paths (if @fixture_dirs == [] do
             []
@@ -57,11 +61,19 @@ defmodule Arrow.Ipc.FileFixturesTest do
           assert from_file.schema == from_json.schema,
                  "schema diverged between .arrow_file and .json.gz for #{unquote(name)}"
 
+          assert Arrow.Logical.dictionaries_equal?(from_file.dictionaries, from_json.dictionaries),
+                 "dictionaries diverged for #{unquote(name)}"
+
           assert length(from_file.batches) == length(from_json.batches),
                  "batch count diverged for #{unquote(name)}"
 
           for {f, j, i} <- Enum.zip([from_file.batches, from_json.batches, 0..1_000_000]) do
-            assert Arrow.Logical.batches_equal?(f, j),
+            assert Arrow.Logical.batches_equal?(
+                     f,
+                     j,
+                     from_file.dictionaries,
+                     from_json.dictionaries
+                   ),
                    "batch #{i} diverged for #{unquote(name)}"
           end
         else

@@ -141,6 +141,36 @@ defmodule Arrow.LogicalTest do
       refute Logical.arrays_equal?(a1, a2)
     end
 
+    test "Dictionary<Utf8> resolves indices to values" do
+      dict = utf8(["apple", "banana", "cherry"])
+      indices = int32([0, 2, 1, 0, nil] |> Enum.map(&if(&1, do: &1, else: 0)), [1, 1, 1, 1, 0])
+
+      array = %Arrow.Array.Dictionary{dictionary_id: 0, indices: indices}
+      dicts = %{0 => dict}
+
+      assert Logical.to_list(array, dicts) == ["apple", "cherry", "banana", "apple", nil]
+    end
+
+    test "Dictionary arrays equal across different dictionary registries when content matches" do
+      dict_a = utf8(["x", "y", "z"])
+      dict_b = utf8(["x", "y", "z"])
+
+      ix_a = int32([0, 2, 1])
+      ix_b = int32([0, 2, 1])
+
+      a = %Arrow.Array.Dictionary{dictionary_id: 7, indices: ix_a}
+      b = %Arrow.Array.Dictionary{dictionary_id: 42, indices: ix_b}
+
+      assert Logical.arrays_equal?(a, b, %{7 => dict_a}, %{42 => dict_b})
+    end
+
+    test "Dictionary arrays unequal when underlying values differ" do
+      a = %Arrow.Array.Dictionary{dictionary_id: 0, indices: int32([0, 1])}
+      b = %Arrow.Array.Dictionary{dictionary_id: 0, indices: int32([0, 1])}
+
+      refute Logical.arrays_equal?(a, b, %{0 => utf8(["x", "y"])}, %{0 => utf8(["x", "z"])})
+    end
+
     test "batches_equal?" do
       schema = %Arrow.Schema{
         fields: [

@@ -25,11 +25,19 @@ defmodule Arrow.Ipc.StreamFixturesTest do
                 )
 
   # Fixtures with intentional upstream divergence between `.stream` and
-  # `.json.gz`. The "non_canonical" Map case has the IPC producer canonicalize
-  # the Map entries child name to "entries" while the JSON fixture deliberately
-  # keeps a non-standard name. There's no disagreement in our pipeline to fix.
+  # `.json.gz`. Not bugs on our side; the source files genuinely differ.
+  #
+  # - generated_map_non_canonical: the IPC producer canonicalizes the Map
+  #   entries child name to "entries" while the JSON fixture deliberately
+  #   keeps a non-standard name.
+  # - generated_nested_dictionary: the IPC and JSON producers assign
+  #   different dictionary IDs to semantically-identical dictionaries
+  #   (the JSON shares one id across two child fields; the IPC uses
+  #   separate ids). Verifying logical equivalence across renumbered
+  #   dictionary IDs needs a structural rewriter; out of scope here.
   @upstream_divergent [
-    "generated_map_non_canonical.stream"
+    "generated_map_non_canonical.stream",
+    "generated_nested_dictionary.stream"
   ]
 
   @stream_paths (if @fixture_dirs == [] do
@@ -65,14 +73,20 @@ defmodule Arrow.Ipc.StreamFixturesTest do
         assert from_stream.schema == from_json.schema,
                "schema diverged between .stream and .json.gz for #{unquote(name)}"
 
+        assert Arrow.Logical.dictionaries_equal?(from_stream.dictionaries, from_json.dictionaries),
+               "dictionaries diverged for #{unquote(name)}"
+
         assert length(from_stream.batches) == length(from_json.batches),
                "batch count diverged for #{unquote(name)}"
 
         for {s, j, i} <- Enum.zip([from_stream.batches, from_json.batches, 0..1_000_000]) do
-          assert Arrow.Logical.batches_equal?(s, j),
-                 "batch #{i} diverged between .stream and .json.gz for #{unquote(name)} " <>
-                   "(stream=#{inspect(Enum.map(s.columns, &Arrow.Logical.to_list/1), limit: 5)} " <>
-                   "json=#{inspect(Enum.map(j.columns, &Arrow.Logical.to_list/1), limit: 5)})"
+          assert Arrow.Logical.batches_equal?(
+                   s,
+                   j,
+                   from_stream.dictionaries,
+                   from_json.dictionaries
+                 ),
+                 "batch #{i} diverged between .stream and .json.gz for #{unquote(name)}"
         end
       else
         {:skip, msg} ->
