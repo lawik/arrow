@@ -15,11 +15,16 @@ defmodule Arrow.Json do
   alias Arrow.Json.{Reader, Writer}
 
   @doc """
-  Reads a JSON document (or in-memory map) into a schema plus a list of
-  record batches.
+  Reads a JSON document (or in-memory map) into a schema, dictionaries
+  registry, and list of record batches.
   """
   @spec decode(binary() | map()) ::
-          {:ok, %{schema: Arrow.Schema.t(), batches: [Arrow.RecordBatch.t()]}}
+          {:ok,
+           %{
+             schema: Arrow.Schema.t(),
+             dictionaries: %{optional(non_neg_integer()) => Arrow.Array.t()},
+             batches: [Arrow.RecordBatch.t()]
+           }}
           | {:error, term()}
   def decode(json) when is_binary(json) do
     with {:ok, decoded} <- Jason.decode(json) do
@@ -30,12 +35,18 @@ defmodule Arrow.Json do
   def decode(%{} = map), do: Reader.read(map)
 
   @doc """
-  Encodes a schema plus record batches into the Arrow integration JSON form.
+  Encodes a schema plus record batches (and optional dictionaries
+  registry) into the Arrow integration JSON form.
   """
-  @spec encode(Arrow.Schema.t(), [Arrow.RecordBatch.t()]) :: iodata()
-  def encode(%Arrow.Schema{} = schema, batches) when is_list(batches) do
+  @spec encode(
+          Arrow.Schema.t(),
+          [Arrow.RecordBatch.t()],
+          %{optional(non_neg_integer()) => Arrow.Array.t()}
+        ) :: iodata()
+  def encode(%Arrow.Schema{} = schema, batches, dictionaries \\ %{})
+      when is_list(batches) and is_map(dictionaries) do
     schema
-    |> Writer.write(batches)
+    |> Writer.write(batches, dictionaries)
     |> Jason.encode_to_iodata!()
   end
 end

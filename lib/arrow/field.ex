@@ -1,8 +1,14 @@
 defmodule Arrow.Field do
   @moduledoc """
   A named column within a schema. Holds the logical type, nullability, an
-  optional per-field metadata map, and the child fields used by nested types
-  (`List`, `Struct`).
+  optional per-field metadata map, the child fields used by nested types
+  (`List`, `Struct`), and an optional `Arrow.Type.DictionaryEncoding` when
+  the field is dictionary-encoded.
+
+  Dictionary encoding in Arrow is a *property of the field*, not a type:
+  the `type` continues to describe what the dictionary stores (e.g.
+  `Utf8`), while `dictionary.index_type` describes the integer type used
+  in record batches to reference dictionary entries.
   """
 
   @enforce_keys [:name, :type]
@@ -10,7 +16,8 @@ defmodule Arrow.Field do
             type: nil,
             nullable: true,
             children: [],
-            metadata: %{}
+            metadata: %{},
+            dictionary: nil
 
   @type metadata :: %{optional(String.t()) => String.t()}
 
@@ -19,6 +26,7 @@ defmodule Arrow.Field do
           type: Arrow.Type.t(),
           nullable: boolean(),
           children: [t()],
-          metadata: metadata()
+          metadata: metadata(),
+          dictionary: Arrow.Type.DictionaryEncoding.t() | nil
         }
 end

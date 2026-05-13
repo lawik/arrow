@@ -14,11 +14,20 @@ defmodule Arrow.Json.Reader do
   Parses a decoded JSON map into `{:ok, %{schema:, batches:}}` or
   `{:error, reason}`.
   """
-  @spec read(map()) :: {:ok, %{schema: Schema.t(), batches: [RecordBatch.t()]}} | {:error, term()}
+  @spec read(map()) ::
+          {:ok,
+           %{
+             schema: Schema.t(),
+             dictionaries: %{optional(non_neg_integer()) => Arrow.Array.t()},
+             batches: [RecordBatch.t()]
+           }}
+          | {:error, term()}
   def read(%{"schema" => schema_map} = doc) do
     schema = read_schema(schema_map)
+    dictionaries = doc |> Map.get("dictionaries", []) |> read_dictionaries(schema)
     batches = doc |> Map.get("batches", []) |> Enum.map(&read_batch(&1, schema))
-    {:ok, %{schema: schema, batches: batches}}
+
+    {:ok, %{schema: schema, dictionaries: dictionaries, batches: batches}}
   rescue
     e -> {:error, e}
   end
@@ -37,16 +46,23 @@ defmodule Arrow.Json.Reader do
   end
 
   defp read_field(%{"name" => name, "type" => type_map} = map) do
-    if Map.has_key?(map, "dictionary") do
-      raise ArgumentError, "unsupported type: dictionary-encoded field #{inspect(name)}"
-    end
-
     %Field{
       name: name,
       type: read_type(type_map),
       nullable: Map.get(map, "nullable", true),
       children: map |> Map.get("children", []) |> Enum.map(&read_field/1),
-      metadata: read_metadata(map["metadata"])
+      metadata: read_metadata(map["metadata"]),
+      dictionary: read_dictionary_annotation(map["dictionary"])
+    }
+  end
+
+  defp read_dictionary_annotation(nil), do: nil
+
+  defp read_dictionary_annotation(%{"id" => id, "indexType" => idx_type_map} = m) do
+    %Arrow.Type.DictionaryEncoding{
+      id: id,
+      index_type: read_type(idx_type_map),
+      is_ordered: Map.get(m, "isOrdered", false)
     }
   end
 
@@ -133,6 +149,41 @@ defmodule Arrow.Json.Reader do
   ## Batches and columns
   ## ---------------------------------------------------------------------
 
+  defp read_dictionaries([], _schema), do: %{}
+
+  defp read_dictionaries(list, %Schema{} = schema) when is_list(list) do
+    Map.new(list, fn %{"id" => id, "data" => %{"count" => count, "columns" => [col]}} ->
+      field =
+        find_field_by_dict_id(schema, id) ||
+          raise(ArgumentError, "dictionary id #{id} has no referencing field")
+
+      # Read the dictionary's values using the field's *value* type
+      # (i.e. ignore the dictionary annotation for this read).
+      value_field = %Field{
+        name: field.name,
+        type: field.type,
+        nullable: field.nullable,
+        children: field.children,
+        metadata: field.metadata
+      }
+
+      {id, read_column(col, value_field, count)}
+    end)
+  end
+
+  defp find_field_by_dict_id(%Schema{fields: fields}, target), do: walk_for_dict(fields, target)
+
+  defp walk_for_dict(fields, target) when is_list(fields) do
+    Enum.find_value(fields, fn f -> walk_for_dict(f, target) end)
+  end
+
+  defp walk_for_dict(%Field{dictionary: %{id: id}} = f, target) when id == target, do: f
+
+  defp walk_for_dict(%Field{children: children}, target),
+    do: walk_for_dict(children, target)
+
+  defp walk_for_dict(_, _), do: nil
+
   defp read_batch(%{"count" => count, "columns" => cols}, %Schema{fields: fields} = schema) do
     if length(cols) != length(fields) do
       raise ArgumentError, "batch has #{length(cols)} columns but schema has #{length(fields)}"
@@ -150,9 +201,18 @@ defmodule Arrow.Json.Reader do
     }
   end
 
-  defp read_column(col, %Field{type: type, children: children}, batch_count) do
+  defp read_column(col, %Field{dictionary: nil, type: type, children: children}, batch_count) do
     count = Map.get(col, "count", batch_count)
     read_column_by_type(type, col, count, children)
+  end
+
+  defp read_column(col, %Field{dictionary: %{id: id, index_type: idx_type}}, batch_count) do
+    # Dictionary-encoded columns store *indices* into the dictionary
+    # registry. The column body is shaped exactly like a primitive int
+    # column whose type is the dictionary's index_type.
+    count = Map.get(col, "count", batch_count)
+    indices = read_column_by_type(idx_type, col, count, [])
+    %Arrow.Array.Dictionary{dictionary_id: id, indices: indices}
   end
 
   ## ----- Null -----

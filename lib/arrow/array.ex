@@ -269,6 +269,27 @@ defmodule Arrow.Array.Map do
         }
 end
 
+defmodule Arrow.Array.Dictionary do
+  @moduledoc """
+  Dictionary-encoded column. The buffer is just the *indices* (a
+  primitive integer array referencing entries in a dictionary stored
+  separately, identified by `dictionary_id`).
+
+  The dictionary itself is *not* held on the array. It's transmitted in
+  the IPC stream as a `DictionaryBatch` message and held in the
+  decoder's session-level registry — `Arrow.Logical.batches_equal?/3`
+  and similar comparators that need to resolve the underlying values
+  take the registry as an additional argument.
+  """
+  @enforce_keys [:dictionary_id, :indices]
+  defstruct [:dictionary_id, :indices]
+
+  @type t :: %__MODULE__{
+          dictionary_id: non_neg_integer(),
+          indices: Arrow.Array.t()
+        }
+end
+
 defmodule Arrow.Array do
   @moduledoc """
   Per-type column structs. Each module under `Arrow.Array.*` represents one
@@ -304,6 +325,7 @@ defmodule Arrow.Array do
     Date32,
     Date64,
     Decimal128,
+    Dictionary,
     Duration,
     FixedSizeBinary,
     FixedSizeList,
@@ -354,6 +376,7 @@ defmodule Arrow.Array do
           | %FixedSizeList{}
           | %Decimal128{}
           | %Map{}
+          | %Dictionary{}
 
   @doc "The number of slots in the array (`length`)."
   @spec length(t()) :: non_neg_integer()

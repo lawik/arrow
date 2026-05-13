@@ -681,6 +681,73 @@ defmodule Arrow.JsonRoundTripTest do
     refute col.keys_sorted
   end
 
+  test "Dictionary<Utf8> column with top-level registry" do
+    json = %{
+      "schema" => %{
+        "fields" => [
+          %{
+            "name" => "d",
+            "type" => %{"name" => "utf8"},
+            "nullable" => true,
+            "children" => [],
+            "dictionary" => %{
+              "id" => 0,
+              "indexType" => %{"name" => "int", "bitWidth" => 32, "isSigned" => true},
+              "isOrdered" => false
+            }
+          }
+        ]
+      },
+      "dictionaries" => [
+        %{
+          "id" => 0,
+          "data" => %{
+            "count" => 3,
+            "columns" => [
+              %{
+                "name" => "DICT0",
+                "count" => 3,
+                "VALIDITY" => [1, 1, 1],
+                "OFFSET" => [0, 3, 6, 9],
+                "DATA" => ["foo", "bar", "baz"]
+              }
+            ]
+          }
+        }
+      ],
+      "batches" => [
+        %{
+          "count" => 5,
+          "columns" => [
+            %{
+              "name" => "d",
+              "count" => 5,
+              "VALIDITY" => [1, 1, 1, 0, 1],
+              "DATA" => [0, 1, 2, 0, 1]
+            }
+          ]
+        }
+      ]
+    }
+
+    {:ok, original} = Json.decode(json)
+    assert map_size(original.dictionaries) == 1
+    assert %Arrow.Array.Utf8{} = Map.fetch!(original.dictionaries, 0)
+
+    [%RecordBatch{columns: [%Arrow.Array.Dictionary{dictionary_id: 0, indices: indices}]}] =
+      original.batches
+
+    assert %Arrow.Array.Int32{} = indices
+    assert indices.null_count == 1
+
+    encoded = Json.encode(original.schema, original.batches, original.dictionaries)
+    {:ok, redecoded} = Json.decode(IO.iodata_to_binary(encoded))
+
+    assert redecoded.schema == original.schema
+    assert redecoded.dictionaries == original.dictionaries
+    assert redecoded.batches == original.batches
+  end
+
   test "schema metadata round-trips" do
     json = %{
       "schema" => %{

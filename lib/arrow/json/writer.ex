@@ -12,15 +12,64 @@ defmodule Arrow.Json.Writer do
   alias Arrow.{Array, Buffer, Field, RecordBatch, Schema, Type}
 
   @doc """
-  Converts a schema + batches into the JSON-form map.
+  Converts a schema + batches (+ optional dictionaries registry) into
+  the JSON-form map.
   """
-  @spec write(Schema.t(), [RecordBatch.t()]) :: map()
-  def write(%Schema{} = schema, batches) when is_list(batches) do
-    %{
+  @spec write(
+          Schema.t(),
+          [RecordBatch.t()],
+          %{optional(non_neg_integer()) => Arrow.Array.t()}
+        ) :: map()
+  def write(%Schema{} = schema, batches, dictionaries \\ %{})
+      when is_list(batches) and is_map(dictionaries) do
+    base = %{
       "schema" => write_schema(schema),
       "batches" => Enum.map(batches, &write_batch(&1, schema))
     }
+
+    if map_size(dictionaries) == 0 do
+      base
+    else
+      Map.put(base, "dictionaries", write_dictionaries(dictionaries, schema))
+    end
   end
+
+  defp write_dictionaries(dicts, %Schema{} = schema) do
+    Enum.map(dicts, fn {id, array} ->
+      field =
+        find_field_by_dict_id(schema, id) ||
+          raise(ArgumentError, "dictionary id #{id} has no referencing field")
+
+      value_field = %Field{
+        name: field.name,
+        type: field.type,
+        nullable: field.nullable,
+        children: field.children,
+        metadata: field.metadata
+      }
+
+      %{
+        "id" => id,
+        "data" => %{
+          "count" => array_count(array),
+          "columns" => [write_column(value_field, array)]
+        }
+      }
+    end)
+  end
+
+  defp find_field_by_dict_id(%Schema{fields: fields}, target), do: walk_for_dict(fields, target)
+
+  defp walk_for_dict(fields, target) when is_list(fields) do
+    Enum.find_value(fields, fn f -> walk_for_dict(f, target) end)
+  end
+
+  defp walk_for_dict(%Field{dictionary: %{id: id}} = f, target) when id == target, do: f
+
+  defp walk_for_dict(%Field{children: children}, target),
+    do: walk_for_dict(children, target)
+
+  defp walk_for_dict(_, _), do: nil
 
   ## ---------------------------------------------------------------------
   ## Schema
@@ -39,7 +88,19 @@ defmodule Arrow.Json.Writer do
       "children" => Enum.map(f.children, &write_field/1)
     }
 
-    maybe_put_metadata(base, f.metadata)
+    base
+    |> maybe_put_metadata(f.metadata)
+    |> maybe_put_dictionary(f.dictionary)
+  end
+
+  defp maybe_put_dictionary(map, nil), do: map
+
+  defp maybe_put_dictionary(map, %Arrow.Type.DictionaryEncoding{} = d) do
+    Map.put(map, "dictionary", %{
+      "id" => d.id,
+      "indexType" => write_type(d.index_type),
+      "isOrdered" => d.is_ordered
+    })
   end
 
   defp maybe_put_metadata(map, %{} = m) when map_size(m) == 0, do: map
@@ -124,9 +185,20 @@ defmodule Arrow.Json.Writer do
     }
   end
 
-  defp write_column(%Field{} = field, array) do
+  defp write_column(%Field{dictionary: nil} = field, array) do
     base = %{"name" => field.name, "count" => array_count(array)}
     write_column_body(base, field, array)
+  end
+
+  defp write_column(
+         %Field{dictionary: %{index_type: idx_type}} = field,
+         %Arrow.Array.Dictionary{indices: indices}
+       ) do
+    # Emit the column body using the index type. The dictionary
+    # annotation on the field stays at schema level; the column itself
+    # just carries the indices.
+    base = %{"name" => field.name, "count" => array_count(indices)}
+    write_column_body(base, %Field{field | type: idx_type, dictionary: nil}, indices)
   end
 
   defp array_count(%Array.Null{length: n}), do: n

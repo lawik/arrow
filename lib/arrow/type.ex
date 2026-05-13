@@ -155,6 +155,30 @@ defmodule Arrow.Type.Map do
   @type t :: %__MODULE__{keys_sorted: boolean()}
 end
 
+defmodule Arrow.Type.DictionaryEncoding do
+  @moduledoc """
+  Dictionary-encoding annotation on a `Arrow.Field`.
+
+  `id` is the dictionary's identifier within the IPC session — multiple
+  fields can share a single dictionary by referring to the same `id`.
+  `index_type` is the integer type used to index into the dictionary
+  from a record batch column. `is_ordered` indicates the dictionary
+  values are sorted in ascending order; some consumers rely on that.
+
+  This is *not* an `Arrow.Type` variant. The enclosing field's `type`
+  continues to describe the dictionary's *value* type. The
+  `DictionaryEncoding` lives on `Arrow.Field.dictionary`.
+  """
+  @enforce_keys [:id, :index_type]
+  defstruct [:id, :index_type, is_ordered: false]
+
+  @type t :: %__MODULE__{
+          id: non_neg_integer(),
+          index_type: Arrow.Type.Int.t(),
+          is_ordered: boolean()
+        }
+end
+
 defmodule Arrow.Type do
   @moduledoc """
   Arrow logical types. Each type is a distinct struct under `Arrow.Type.*`.
