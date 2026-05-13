@@ -113,8 +113,25 @@ defmodule Arrow.Ipc.Metadata do
   end
 
   ## ---------------------------------------------------------------------
-  ## Schema ↔ FB
+  ## Schema ↔ FB (public conversion API, used by Arrow.Ipc.Stream)
   ## ---------------------------------------------------------------------
+
+  @doc """
+  Converts an `Arrow.Schema` to the map shape accepted by
+  `Arrow.Ipc.Flatbuf.Schema.build/2`. Exposed so the stream/message
+  encoder can drop a Schema into a `MessageHeader` union without
+  re-encoding a standalone buffer.
+  """
+  @spec schema_to_fb_map(Arrow.Schema.t()) :: map()
+  def schema_to_fb_map(%Arrow.Schema{} = schema), do: to_fb_schema(schema)
+
+  @doc """
+  Converts an `Arrow.Ipc.Flatbuf.Schema` struct (as produced by
+  `decode_at/2`) back to an `Arrow.Schema`. Exposed for the same
+  reason as `schema_to_fb_map/1`.
+  """
+  @spec schema_from_fb_struct(Flatbuf.Schema.t()) :: Arrow.Schema.t()
+  def schema_from_fb_struct(%Flatbuf.Schema{} = fb), do: from_fb_schema(fb)
 
   defp to_fb_schema(%Arrow.Schema{fields: fields, metadata: metadata}) do
     %{

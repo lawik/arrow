@@ -487,6 +487,10 @@ defmodule Arrow.Ipc.Body do
      }, ns2, bs2}
   end
 
+  defp decode_array(%Field{type: type}, _nodes, _buffers, _body) do
+    raise ArgumentError, "Body.decode: unsupported array type #{inspect(type)}"
+  end
+
   ## ---------------------------------------------------------------------
   ## Decode helpers
   ## ---------------------------------------------------------------------

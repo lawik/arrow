@@ -476,7 +476,13 @@ defmodule Arrow.Json.Reader do
             "VALIDITY has #{length(flags)} entries but column count is #{count}"
     end
 
-    Buffer.pack_validity(flags)
+    case Buffer.pack_validity(flags) do
+      # Canonicalize: when there are no nulls, drop the bitmap. Keeps the
+      # in-memory representation consistent with the IPC/Body decoders and
+      # with what real Arrow producers emit.
+      {_bitmap, 0} -> {nil, 0}
+      other -> other
+    end
   end
 
   ## ---------------------------------------------------------------------
