@@ -159,6 +159,14 @@ defmodule Arrow.Json.Writer do
     %{"name" => "map", "keysSorted" => ks}
   end
 
+  defp write_type(%Type.Interval{unit: unit}) do
+    %{"name" => "interval", "unit" => interval_unit_string(unit)}
+  end
+
+  defp interval_unit_string(:year_month), do: "YEAR_MONTH"
+  defp interval_unit_string(:day_time), do: "DAY_TIME"
+  defp interval_unit_string(:month_day_nano), do: "MONTH_DAY_NANO"
+
   defp precision_string(:half), do: "HALF"
   defp precision_string(:single), do: "SINGLE"
   defp precision_string(:double), do: "DOUBLE"
@@ -377,6 +385,43 @@ defmodule Arrow.Json.Writer do
     |> Map.put("DATA", Enum.map(values, &Integer.to_string/1))
   end
 
+  ## ----- Interval -----
+  defp write_column_body(
+         base,
+         %Field{type: %Type.Interval{unit: :year_month}},
+         %Array.IntervalYearMonth{} = a
+       ) do
+    values = Buffer.unpack_primitive(a.values, :int32, a.length)
+
+    base
+    |> Map.put("VALIDITY", validity_list(a.validity, a.length))
+    |> Map.put("DATA", values)
+  end
+
+  defp write_column_body(
+         base,
+         %Field{type: %Type.Interval{unit: :day_time}},
+         %Array.IntervalDayTime{} = a
+       ) do
+    entries = unpack_day_time(a.values, a.length)
+
+    base
+    |> Map.put("VALIDITY", validity_list(a.validity, a.length))
+    |> Map.put("DATA", entries)
+  end
+
+  defp write_column_body(
+         base,
+         %Field{type: %Type.Interval{unit: :month_day_nano}},
+         %Array.IntervalMonthDayNano{} = a
+       ) do
+    entries = unpack_month_day_nano(a.values, a.length)
+
+    base
+    |> Map.put("VALIDITY", validity_list(a.validity, a.length))
+    |> Map.put("DATA", entries)
+  end
+
   ## ----- Map -----
   defp write_column_body(
          base,
@@ -411,6 +456,39 @@ defmodule Arrow.Json.Writer do
 
   defp do_unpack_decimal(<<v::little-signed-256, rest::binary>>, n, 256, acc),
     do: do_unpack_decimal(rest, n - 1, 256, [v | acc])
+
+  defp unpack_day_time(_binary, 0), do: []
+
+  defp unpack_day_time(binary, length) when length > 0 do
+    do_unpack_day_time(binary, length, [])
+  end
+
+  defp do_unpack_day_time(_binary, 0, acc), do: Enum.reverse(acc)
+
+  defp do_unpack_day_time(
+         <<d::little-signed-32, m::little-signed-32, rest::binary>>,
+         n,
+         acc
+       ) do
+    do_unpack_day_time(rest, n - 1, [%{"days" => d, "milliseconds" => m} | acc])
+  end
+
+  defp unpack_month_day_nano(_binary, 0), do: []
+
+  defp unpack_month_day_nano(binary, length) when length > 0 do
+    do_unpack_month_day_nano(binary, length, [])
+  end
+
+  defp do_unpack_month_day_nano(_binary, 0, acc), do: Enum.reverse(acc)
+
+  defp do_unpack_month_day_nano(
+         <<m::little-signed-32, d::little-signed-32, n::little-signed-64, rest::binary>>,
+         count,
+         acc
+       ) do
+    entry = %{"months" => m, "days" => d, "nanoseconds" => n}
+    do_unpack_month_day_nano(rest, count - 1, [entry | acc])
+  end
 
   ## ---------------------------------------------------------------------
   ## Helpers

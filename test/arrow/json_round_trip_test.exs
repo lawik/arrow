@@ -614,6 +614,109 @@ defmodule Arrow.JsonRoundTripTest do
     end
   end
 
+  test "Interval YEAR_MONTH" do
+    json = %{
+      "schema" => %{
+        "fields" => [
+          %{
+            "name" => "i",
+            "type" => %{"name" => "interval", "unit" => "YEAR_MONTH"},
+            "nullable" => true,
+            "children" => []
+          }
+        ]
+      },
+      "batches" => [
+        %{
+          "count" => 3,
+          "columns" => [
+            %{
+              "name" => "i",
+              "count" => 3,
+              "VALIDITY" => [1, 0, 1],
+              "DATA" => [12, 0, -36]
+            }
+          ]
+        }
+      ]
+    }
+
+    {_schema, [%RecordBatch{columns: [%Arrow.Array.IntervalYearMonth{} = col]}]} =
+      round_trip(json)
+
+    assert col.null_count == 1
+  end
+
+  test "Interval DAY_TIME" do
+    json = %{
+      "schema" => %{
+        "fields" => [
+          %{
+            "name" => "i",
+            "type" => %{"name" => "interval", "unit" => "DAY_TIME"},
+            "nullable" => true,
+            "children" => []
+          }
+        ]
+      },
+      "batches" => [
+        %{
+          "count" => 2,
+          "columns" => [
+            %{
+              "name" => "i",
+              "count" => 2,
+              "VALIDITY" => [1, 1],
+              "DATA" => [
+                %{"days" => 5, "milliseconds" => 500},
+                %{"days" => -2, "milliseconds" => 0}
+              ]
+            }
+          ]
+        }
+      ]
+    }
+
+    {_schema, [%RecordBatch{columns: [%Arrow.Array.IntervalDayTime{} = col]}]} = round_trip(json)
+    assert byte_size(col.values) == 16
+  end
+
+  test "Interval MONTH_DAY_NANO" do
+    json = %{
+      "schema" => %{
+        "fields" => [
+          %{
+            "name" => "i",
+            "type" => %{"name" => "interval", "unit" => "MONTH_DAY_NANO"},
+            "nullable" => true,
+            "children" => []
+          }
+        ]
+      },
+      "batches" => [
+        %{
+          "count" => 2,
+          "columns" => [
+            %{
+              "name" => "i",
+              "count" => 2,
+              "VALIDITY" => [1, 1],
+              "DATA" => [
+                %{"months" => 1, "days" => 2, "nanoseconds" => 1_000_000_000},
+                %{"months" => -3, "days" => 0, "nanoseconds" => -500}
+              ]
+            }
+          ]
+        }
+      ]
+    }
+
+    {_schema, [%RecordBatch{columns: [%Arrow.Array.IntervalMonthDayNano{} = col]}]} =
+      round_trip(json)
+
+    assert byte_size(col.values) == 32
+  end
+
   test "Decimal128 column legacy" do
     json = %{
       "schema" => %{

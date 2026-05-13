@@ -251,6 +251,10 @@ defmodule Arrow.Ipc.Metadata do
     {:Map, %{keysSorted: ks}}
   end
 
+  defp type_to_fb(%Arrow.Type.Interval{unit: unit}) do
+    {:Interval, %{unit: fb_interval_unit(unit)}}
+  end
+
   defp type_from_fb({:Null, _}), do: %Arrow.Type.Null{}
   defp type_from_fb({:Bool, _}), do: %Arrow.Type.Bool{}
 
@@ -300,6 +304,10 @@ defmodule Arrow.Ipc.Metadata do
     %Arrow.Type.Map{keys_sorted: ks}
   end
 
+  defp type_from_fb({:Interval, %Flatbuf.Interval{unit: unit}}) do
+    %Arrow.Type.Interval{unit: from_fb_interval_unit(unit)}
+  end
+
   defp type_from_fb({variant, _})
        when variant in [
               :LargeBinary,
@@ -310,8 +318,7 @@ defmodule Arrow.Ipc.Metadata do
               :BinaryView,
               :Utf8View,
               :RunEndEncoded,
-              :Union,
-              :Interval
+              :Union
             ] do
     raise ArgumentError, "unsupported FB type variant: #{variant}"
   end
@@ -343,6 +350,14 @@ defmodule Arrow.Ipc.Metadata do
   defp from_fb_time_unit(:MILLISECOND), do: :millisecond
   defp from_fb_time_unit(:MICROSECOND), do: :microsecond
   defp from_fb_time_unit(:NANOSECOND), do: :nanosecond
+
+  defp fb_interval_unit(:year_month), do: :YEAR_MONTH
+  defp fb_interval_unit(:day_time), do: :DAY_TIME
+  defp fb_interval_unit(:month_day_nano), do: :MONTH_DAY_NANO
+
+  defp from_fb_interval_unit(:YEAR_MONTH), do: :year_month
+  defp from_fb_interval_unit(:DAY_TIME), do: :day_time
+  defp from_fb_interval_unit(:MONTH_DAY_NANO), do: :month_day_nano
 
   ## ---------------------------------------------------------------------
   ## Metadata maps

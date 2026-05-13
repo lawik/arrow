@@ -183,6 +183,18 @@ defmodule Arrow.Ipc.Body do
   end
 
   defp encode_array(%mod{} = a, acc)
+       when mod in [
+              Array.IntervalYearMonth,
+              Array.IntervalDayTime,
+              Array.IntervalMonthDayNano
+            ] do
+    acc
+    |> push_node(a.length, a.null_count)
+    |> push_buffer(a.validity, bitmap_size(a.length))
+    |> push_buffer(a.values, byte_size(a.values))
+  end
+
+  defp encode_array(%mod{} = a, acc)
        when mod in [Array.Decimal32, Array.Decimal64, Array.Decimal128, Array.Decimal256] do
     acc
     |> push_node(a.length, a.null_count)
@@ -412,6 +424,22 @@ defmodule Arrow.Ipc.Body do
        validity: take_validity(body, v, n.length, n.null_count),
        values: take_slice(body, d)
      }, ns, bs}
+  end
+
+  defp decode_array(%Field{type: %Arrow.Type.Interval{unit: u}}, [n | ns], [v, d | bs], body) do
+    array_mod =
+      case u do
+        :year_month -> Array.IntervalYearMonth
+        :day_time -> Array.IntervalDayTime
+        :month_day_nano -> Array.IntervalMonthDayNano
+      end
+
+    {struct!(array_mod, %{
+       length: n.length,
+       null_count: n.null_count,
+       validity: take_validity(body, v, n.length, n.null_count),
+       values: take_slice(body, d)
+     }), ns, bs}
   end
 
   defp decode_array(%Field{type: %Arrow.Type.Duration{unit: u}}, [n | ns], [v, d | bs], body) do

@@ -155,6 +155,21 @@ defmodule Arrow.Type.Map do
   @type t :: %__MODULE__{keys_sorted: boolean()}
 end
 
+defmodule Arrow.Type.Interval do
+  @moduledoc """
+  Interval column. Three concrete physical layouts:
+
+  - `:year_month` — int32 months
+  - `:day_time` — pair of int32s {days, milliseconds}, 8 bytes per slot
+  - `:month_day_nano` — {int32 months, int32 days, int64 nanoseconds},
+    16 bytes per slot
+  """
+  defstruct [:unit]
+
+  @type unit :: :year_month | :day_time | :month_day_nano
+  @type t :: %__MODULE__{unit: unit()}
+end
+
 defmodule Arrow.Type.DictionaryEncoding do
   @moduledoc """
   Dictionary-encoding annotation on a `Arrow.Field`.
@@ -200,6 +215,7 @@ defmodule Arrow.Type do
     FloatingPoint,
     Int,
     List,
+    Interval,
     Map,
     Null,
     Struct,
@@ -225,6 +241,7 @@ defmodule Arrow.Type do
           | %FixedSizeList{}
           | %Decimal{}
           | %Map{}
+          | %Interval{}
 
   @doc "Returns the in-memory width in bits of a primitive numeric type."
   @spec bit_width(t()) :: pos_integer()

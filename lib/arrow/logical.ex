@@ -73,6 +73,18 @@ defmodule Arrow.Logical do
   def to_list(%Array.Time64{} = a, _dicts), do: primitive_to_list(a, :int64)
   def to_list(%Array.Duration{} = a, _dicts), do: primitive_to_list(a, :int64)
 
+  def to_list(%Array.IntervalYearMonth{} = a, _dicts) do
+    apply_validity(a, Buffer.unpack_primitive(a.values, :int32, a.length))
+  end
+
+  def to_list(%Array.IntervalDayTime{} = a, _dicts) do
+    apply_validity(a, unpack_day_time(a.values, a.length))
+  end
+
+  def to_list(%Array.IntervalMonthDayNano{} = a, _dicts) do
+    apply_validity(a, unpack_month_day_nano(a.values, a.length))
+  end
+
   def to_list(%Array.Decimal32{} = a, _dicts), do: apply_validity(a, decimal_values(a, 32))
   def to_list(%Array.Decimal64{} = a, _dicts), do: apply_validity(a, decimal_values(a, 64))
   def to_list(%Array.Decimal128{} = a, _dicts), do: apply_validity(a, decimal_values(a, 128))
@@ -347,6 +359,39 @@ defmodule Arrow.Logical do
 
   defp do_unpack_decimal(<<v::little-signed-256, rest::binary>>, n, 256, acc),
     do: do_unpack_decimal(rest, n - 1, 256, [v | acc])
+
+  defp unpack_day_time(_binary, 0), do: []
+
+  defp unpack_day_time(binary, length) when length > 0 do
+    do_unpack_day_time(binary, length, [])
+  end
+
+  defp do_unpack_day_time(_binary, 0, acc), do: Enum.reverse(acc)
+
+  defp do_unpack_day_time(
+         <<d::little-signed-32, m::little-signed-32, rest::binary>>,
+         n,
+         acc
+       ),
+       do: do_unpack_day_time(rest, n - 1, [%{days: d, milliseconds: m} | acc])
+
+  defp unpack_month_day_nano(_binary, 0), do: []
+
+  defp unpack_month_day_nano(binary, length) when length > 0 do
+    do_unpack_month_day_nano(binary, length, [])
+  end
+
+  defp do_unpack_month_day_nano(_binary, 0, acc), do: Enum.reverse(acc)
+
+  defp do_unpack_month_day_nano(
+         <<m::little-signed-32, d::little-signed-32, n::little-signed-64, rest::binary>>,
+         count,
+         acc
+       ),
+       do:
+         do_unpack_month_day_nano(rest, count - 1, [
+           %{months: m, days: d, nanoseconds: n} | acc
+         ])
 
   # Turn a list of N per-child columns (each of length M) into a list of M
   # per-row tuples-as-lists. Used by the Struct walker.

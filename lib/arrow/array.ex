@@ -277,6 +277,34 @@ defmodule Arrow.Array.Map do
         }
 end
 
+for mod <- [
+      Arrow.Array.IntervalYearMonth,
+      Arrow.Array.IntervalDayTime,
+      Arrow.Array.IntervalMonthDayNano
+    ] do
+  defmodule mod do
+    @moduledoc """
+    Interval column. The physical layout depends on the variant:
+
+    - `IntervalYearMonth` — `values` is little-endian int32 months,
+      4 bytes per slot.
+    - `IntervalDayTime` — `values` is little-endian {int32 days,
+      int32 milliseconds}, 8 bytes per slot.
+    - `IntervalMonthDayNano` — `values` is little-endian {int32
+      months, int32 days, int64 nanoseconds}, 16 bytes per slot.
+    """
+    @enforce_keys [:length, :null_count, :values]
+    defstruct length: 0, null_count: 0, validity: nil, values: <<>>
+
+    @type t :: %__MODULE__{
+            length: non_neg_integer(),
+            null_count: non_neg_integer(),
+            validity: binary() | nil,
+            values: binary()
+          }
+  end
+end
+
 defmodule Arrow.Array.Dictionary do
   @moduledoc """
   Dictionary-encoded column. The buffer is just the *indices* (a
@@ -346,6 +374,9 @@ defmodule Arrow.Array do
     Int32,
     Int64,
     Int8,
+    IntervalDayTime,
+    IntervalMonthDayNano,
+    IntervalYearMonth,
     List,
     Map,
     Null,
@@ -391,6 +422,9 @@ defmodule Arrow.Array do
           | %Decimal256{}
           | %Map{}
           | %Dictionary{}
+          | %IntervalYearMonth{}
+          | %IntervalDayTime{}
+          | %IntervalMonthDayNano{}
 
   @doc "The number of slots in the array (`length`)."
   @spec length(t()) :: non_neg_integer()

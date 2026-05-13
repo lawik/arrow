@@ -131,6 +131,10 @@ defmodule Arrow.Json.Reader do
     %Type.Map{keys_sorted: Map.get(m, "keysSorted", false)}
   end
 
+  defp read_type(%{"name" => "interval", "unit" => unit}) do
+    %Type.Interval{unit: interval_unit_atom(unit)}
+  end
+
   defp read_type(other), do: raise(ArgumentError, "unsupported type: #{inspect(other)}")
 
   defp precision_atom("HALF"), do: :half
@@ -144,6 +148,10 @@ defmodule Arrow.Json.Reader do
   defp time_unit_atom("MILLISECOND"), do: :millisecond
   defp time_unit_atom("MICROSECOND"), do: :microsecond
   defp time_unit_atom("NANOSECOND"), do: :nanosecond
+
+  defp interval_unit_atom("YEAR_MONTH"), do: :year_month
+  defp interval_unit_atom("DAY_TIME"), do: :day_time
+  defp interval_unit_atom("MONTH_DAY_NANO"), do: :month_day_nano
 
   ## ---------------------------------------------------------------------
   ## Batches and columns
@@ -494,6 +502,62 @@ defmodule Arrow.Json.Reader do
       validity: validity,
       values: values
     })
+  end
+
+  ## ----- Interval -----
+  defp read_column_by_type(%Type.Interval{unit: :year_month}, col, count, _children) do
+    {validity, null_count} = pack_validity_field(col["VALIDITY"], count)
+
+    values =
+      col |> Map.fetch!("DATA") |> Enum.map(&parse_integer/1) |> Buffer.pack_primitive(:int32)
+
+    %Array.IntervalYearMonth{
+      length: count,
+      null_count: null_count,
+      validity: validity,
+      values: values
+    }
+  end
+
+  defp read_column_by_type(%Type.Interval{unit: :day_time}, col, count, _children) do
+    {validity, null_count} = pack_validity_field(col["VALIDITY"], count)
+
+    values =
+      col
+      |> Map.fetch!("DATA")
+      |> Enum.reduce(<<>>, fn entry, acc ->
+        d = parse_integer(Map.fetch!(entry, "days"))
+        m = parse_integer(Map.fetch!(entry, "milliseconds"))
+        <<acc::binary, d::little-signed-32, m::little-signed-32>>
+      end)
+
+    %Array.IntervalDayTime{
+      length: count,
+      null_count: null_count,
+      validity: validity,
+      values: values
+    }
+  end
+
+  defp read_column_by_type(%Type.Interval{unit: :month_day_nano}, col, count, _children) do
+    {validity, null_count} = pack_validity_field(col["VALIDITY"], count)
+
+    values =
+      col
+      |> Map.fetch!("DATA")
+      |> Enum.reduce(<<>>, fn entry, acc ->
+        m = parse_integer(Map.fetch!(entry, "months"))
+        d = parse_integer(Map.fetch!(entry, "days"))
+        n = parse_integer(Map.fetch!(entry, "nanoseconds"))
+        <<acc::binary, m::little-signed-32, d::little-signed-32, n::little-signed-64>>
+      end)
+
+    %Array.IntervalMonthDayNano{
+      length: count,
+      null_count: null_count,
+      validity: validity,
+      values: values
+    }
   end
 
   ## ----- Map -----
