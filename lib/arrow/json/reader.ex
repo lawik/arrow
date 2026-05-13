@@ -133,7 +133,7 @@ defmodule Arrow.Json.Reader do
   ## Batches and columns
   ## ---------------------------------------------------------------------
 
-  defp read_batch(%{"count" => count, "columns" => cols}, %Schema{fields: fields}) do
+  defp read_batch(%{"count" => count, "columns" => cols}, %Schema{fields: fields} = schema) do
     if length(cols) != length(fields) do
       raise ArgumentError, "batch has #{length(cols)} columns but schema has #{length(fields)}"
     end
@@ -144,7 +144,7 @@ defmodule Arrow.Json.Reader do
       |> Enum.map(fn {field, col} -> read_column(col, field, count) end)
 
     %RecordBatch{
-      schema: %Schema{fields: fields},
+      schema: schema,
       length: count,
       columns: columns
     }

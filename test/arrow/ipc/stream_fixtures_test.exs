@@ -5,17 +5,12 @@ defmodule Arrow.Ipc.StreamFixturesTest do
   Each test pairs a `.stream` file (FlatBuffers + binary body produced by
   another Arrow implementation) with its matching `.json.gz` fixture
   (the canonical Arrow integration JSON). We decode both through our
-  pipeline and assert they agree on:
+  pipeline and assert they agree:
 
-  - schema (exact)
-  - batch count
-  - per-column `length`, `null_count`, and `validity`
-
-  Value buffers are *not* compared byte-exactly: the Arrow spec says
-  null slots may carry arbitrary content, and different producers fill
-  them differently (the C++ producer zeroes them; the JSON producer
-  emits the original random values). A proper null-aware logical
-  equality lives in a follow-up.
+  - schema by exact structural equality
+  - batches by null-aware logical equality (`Arrow.Logical.batches_equal?/2`),
+    which compares per-slot logical values while ignoring byte
+    differences at null positions or in validity-bitmap padding.
   """
 
   use ExUnit.Case, async: true
@@ -61,7 +56,7 @@ defmodule Arrow.Ipc.StreamFixturesTest do
     name = Path.relative_to(path, @fixtures_root)
     json_path = String.replace_suffix(path, ".stream", ".json.gz")
 
-    test "stream ↔ json agree on schema: #{name}" do
+    test "stream ↔ json logically equal: #{name}" do
       stream_bin = File.read!(unquote(path))
       json_bin = unquote(json_path) |> File.read!() |> :zlib.gunzip()
 
@@ -74,22 +69,10 @@ defmodule Arrow.Ipc.StreamFixturesTest do
                "batch count diverged for #{unquote(name)}"
 
         for {s, j, i} <- Enum.zip([from_stream.batches, from_json.batches, 0..1_000_000]) do
-          assert s.length == j.length, "batch #{i} length diverged"
-          assert length(s.columns) == length(j.columns), "batch #{i} column count diverged"
-
-          for {sc, jc, ci} <- Enum.zip([s.columns, j.columns, 0..1_000_000]) do
-            assert sc.__struct__ == jc.__struct__,
-                   "batch #{i} col #{ci}: array type diverged " <>
-                     "(stream=#{inspect(sc.__struct__)} json=#{inspect(jc.__struct__)})"
-
-            if Map.has_key?(sc, :null_count) do
-              assert sc.null_count == jc.null_count,
-                     "batch #{i} col #{ci}: null_count diverged"
-
-              assert sc.validity == jc.validity,
-                     "batch #{i} col #{ci}: validity diverged"
-            end
-          end
+          assert Arrow.Logical.batches_equal?(s, j),
+                 "batch #{i} diverged between .stream and .json.gz for #{unquote(name)} " <>
+                   "(stream=#{inspect(Enum.map(s.columns, &Arrow.Logical.to_list/1), limit: 5)} " <>
+                   "json=#{inspect(Enum.map(j.columns, &Arrow.Logical.to_list/1), limit: 5)})"
         end
       else
         {:skip, msg} ->
