@@ -41,12 +41,9 @@ defmodule Arrow.MixProject do
 
   def aliases do
     [
-      # `compile --warnings-as-errors` is intentionally relaxed: the FlatBuffers
-      # codegen under lib/org/apache/arrow/flatbuf/ currently emits unused
-      # alias / unused variable warnings. Tighten back when flatbuf cleans up.
       check: [
         "hex.audit",
-        "compile --force",
+        "compile --warnings-as-errors --force",
         "format --check-formatted",
         "credo",
         "deps.unlock --check-unused",
@@ -55,7 +52,7 @@ defmodule Arrow.MixProject do
       ],
       precommit: [
         "hex.audit",
-        "compile --force",
+        "compile --warnings-as-errors --force",
         "format",
         "credo",
         "deps.unlock --unused",
