@@ -47,9 +47,8 @@ defmodule Arrow.Ipc.Stream do
   def encode(%Arrow.Schema{} = schema, batches) when is_list(batches) do
     schema_frame = encode_schema_message(schema)
     batch_frames = Enum.map(batches, &encode_record_batch_message/1)
-    eos = <<@continuation::little-32, 0::little-signed-32>>
 
-    IO.iodata_to_binary([schema_frame, batch_frames, eos])
+    IO.iodata_to_binary([schema_frame, batch_frames, eos()])
   end
 
   @doc """
@@ -66,15 +65,34 @@ defmodule Arrow.Ipc.Stream do
   end
 
   ## ---------------------------------------------------------------------
-  ## Encode
+  ## Encode (public frame builders + private composition)
   ## ---------------------------------------------------------------------
 
-  defp encode_schema_message(%Arrow.Schema{} = schema) do
+  @doc """
+  Builds a single Schema message frame: continuation + length + padded
+  metadata. No body. Returns iodata and the framing-inclusive metadata
+  length (i.e. `8 + padded_metadata`).
+
+  Exposed for `Arrow.Ipc.File`, which needs to record per-message file
+  offsets in the Footer's Block list.
+  """
+  @spec schema_message_frame(Arrow.Schema.t()) :: {iodata(), non_neg_integer()}
+  def schema_message_frame(%Arrow.Schema{} = schema) do
     metadata = build_message_metadata({:Schema, Metadata.schema_to_fb_map(schema)}, 0)
-    frame(metadata, <<>>)
+    {iodata, meta_len} = frame(metadata, <<>>)
+    {iodata, meta_len}
   end
 
-  defp encode_record_batch_message(%Arrow.RecordBatch{} = batch) do
+  @doc """
+  Builds a single RecordBatch message frame: continuation + length +
+  padded metadata + body. Returns iodata, the framing-inclusive metadata
+  length, and the body length.
+
+  Exposed for `Arrow.Ipc.File`, same reason as `schema_message_frame/1`.
+  """
+  @spec record_batch_message_frame(Arrow.RecordBatch.t()) ::
+          {iodata(), non_neg_integer(), non_neg_integer()}
+  def record_batch_message_frame(%Arrow.RecordBatch{} = batch) do
     %{length: row_count, nodes: nodes, buffers: buffers, body: body} = Body.encode(batch)
 
     metadata =
@@ -83,7 +101,24 @@ defmodule Arrow.Ipc.Stream do
         byte_size(body)
       )
 
-    frame(metadata, body)
+    {iodata, meta_len} = frame(metadata, body)
+    {iodata, meta_len, byte_size(body)}
+  end
+
+  @doc """
+  End-of-stream marker: continuation marker followed by a zero length.
+  """
+  @spec eos() :: binary()
+  def eos, do: <<@continuation::little-32, 0::little-signed-32>>
+
+  defp encode_schema_message(%Arrow.Schema{} = schema) do
+    {iodata, _meta_len} = schema_message_frame(schema)
+    iodata
+  end
+
+  defp encode_record_batch_message(%Arrow.RecordBatch{} = batch) do
+    {iodata, _meta_len, _body_len} = record_batch_message_frame(batch)
+    iodata
   end
 
   defp build_message_metadata(header, body_length) do
@@ -101,15 +136,14 @@ defmodule Arrow.Ipc.Stream do
     |> Wire.to_binary()
   end
 
+  # Returns {iodata, framing_inclusive_metadata_length}. The length includes
+  # the 8-byte continuation+length prefix per the Block spec: callers writing
+  # the Footer Block descriptors record this value directly.
   defp frame(metadata, body) do
     padded_metadata = pad_to_alignment(metadata)
     len = byte_size(padded_metadata)
-
-    [
-      <<@continuation::little-32, len::little-signed-32>>,
-      padded_metadata,
-      body
-    ]
+    iodata = [<<@continuation::little-32, len::little-signed-32>>, padded_metadata, body]
+    {iodata, 8 + len}
   end
 
   defp pad_to_alignment(binary) do

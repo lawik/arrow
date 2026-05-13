@@ -1,0 +1,185 @@
+defmodule Arrow.Ipc.File do
+  @moduledoc """
+  Encodes and decodes the Arrow IPC **file** format.
+
+  The file format wraps the streaming format with magic bytes and a
+  Footer FlatBuffers table that supports random access — consumers can
+  jump straight to the footer and read individual record batches by
+  offset, without scanning the whole stream linearly.
+
+  ## On-disk layout
+
+      "ARROW1\\0\\0"          (8 bytes magic prefix)
+      <schema message>        (stream-format framing)
+      <batch 0 message>
+      <batch 1 message>
+      ...
+      <EOS>                   (continuation + zero length; 8 bytes)
+      <Footer FlatBuffer>     (variable; contains schema + Block descriptors)
+      <footer length>         (4 bytes, i32 little-endian)
+      "ARROW1"                (6 bytes magic suffix)
+
+  Each `Block` in the Footer is `{offset, metaDataLength, bodyLength}`,
+  pointing at one record batch message within the file:
+
+  - `offset` — absolute byte offset where the message's continuation
+    marker starts.
+  - `metaDataLength` — the framing-inclusive metadata size:
+    `8 + padded_metadata_bytes`. Per the upstream spec the recorded
+    value *includes* the 8-byte prefix.
+  - `bodyLength` — the raw body byte count after the metadata.
+
+  ## Limitations (today)
+
+  - No dictionary support; the `dictionaries` Block list in the Footer
+    is always written empty and rejected on decode.
+  - The Schema appears once in the inline stream prefix and again in
+    the Footer. We treat the inline stream's Schema as authoritative on
+    decode; we do not currently cross-check it against the Footer's.
+  """
+
+  alias Arrow.Ipc.{Body, Flatbuf, Metadata, Stream}
+  alias Arrow.Ipc.Flatbuf.Wire
+
+  @magic "ARROW1\0\0"
+  @magic_suffix "ARROW1"
+  @version :V5
+
+  ## ---------------------------------------------------------------------
+  ## Encode
+  ## ---------------------------------------------------------------------
+
+  @doc """
+  Encodes a schema and zero or more record batches into a complete
+  Arrow IPC file as a binary.
+  """
+  @spec encode(Arrow.Schema.t(), [Arrow.RecordBatch.t()]) :: binary()
+  def encode(%Arrow.Schema{} = schema, batches) when is_list(batches) do
+    {schema_frame, _schema_meta_len} = Stream.schema_message_frame(schema)
+    schema_frame_bin = IO.iodata_to_binary(schema_frame)
+
+    offset_after_magic = byte_size(@magic)
+    offset_after_schema = offset_after_magic + byte_size(schema_frame_bin)
+
+    {batch_frame_iolist_rev, blocks_rev, _next_off} =
+      Enum.reduce(batches, {[], [], offset_after_schema}, fn batch, {chunks, blocks, off} ->
+        {iodata, meta_len, body_len} = Stream.record_batch_message_frame(batch)
+        chunk_bin = IO.iodata_to_binary(iodata)
+        block = %{offset: off, metaDataLength: meta_len, bodyLength: body_len}
+        next_off = off + byte_size(chunk_bin)
+        {[chunk_bin | chunks], [block | blocks], next_off}
+      end)
+
+    batch_chunks = Enum.reverse(batch_frame_iolist_rev)
+    blocks = Enum.reverse(blocks_rev)
+
+    footer_bin = build_footer(schema, blocks)
+
+    IO.iodata_to_binary([
+      @magic,
+      schema_frame_bin,
+      batch_chunks,
+      Stream.eos(),
+      footer_bin,
+      <<byte_size(footer_bin)::little-signed-32>>,
+      @magic_suffix
+    ])
+  end
+
+  defp build_footer(%Arrow.Schema{} = schema, batch_blocks) do
+    builder = Wire.new_builder()
+
+    {builder, addr} =
+      Flatbuf.Footer.build(builder, %{
+        version: @version,
+        schema: Metadata.schema_to_fb_map(schema),
+        dictionaries: [],
+        recordBatches: batch_blocks
+      })
+
+    builder
+    |> Wire.finish(addr)
+    |> Wire.to_binary()
+  end
+
+  ## ---------------------------------------------------------------------
+  ## Decode
+  ## ---------------------------------------------------------------------
+
+  @doc """
+  Parses an Arrow IPC file binary into `{:ok, %{schema:, batches:}}` or
+  `{:error, reason}`.
+  """
+  @spec decode(binary()) ::
+          {:ok, %{schema: Arrow.Schema.t(), batches: [Arrow.RecordBatch.t()]}}
+          | {:error, term()}
+  def decode(binary) when is_binary(binary) do
+    {:ok, do_decode(binary)}
+  rescue
+    e -> {:error, e}
+  end
+
+  defp do_decode(binary) do
+    size = byte_size(binary)
+
+    if size < byte_size(@magic) + byte_size(@magic_suffix) + 4 do
+      raise ArgumentError, "buffer too small to be an Arrow IPC file (#{size} bytes)"
+    end
+
+    <<@magic, _rest::binary>> = binary
+
+    suffix_start = size - byte_size(@magic_suffix)
+    <<_::binary-size(suffix_start), @magic_suffix>> = binary
+
+    footer_length_offset = size - byte_size(@magic_suffix) - 4
+
+    <<_::binary-size(footer_length_offset), footer_length::little-signed-32, _rest::binary>> =
+      binary
+
+    footer_offset = footer_length_offset - footer_length
+
+    <<_::binary-size(footer_offset), footer_bin::binary-size(footer_length), _rest::binary>> =
+      binary
+
+    fb_footer = Flatbuf.Footer.decode_at(footer_bin, Wire.root_table_pos(footer_bin))
+
+    if length(fb_footer.dictionaries || []) > 0 do
+      raise ArgumentError, "DictionaryBatch messages in file format are not yet supported"
+    end
+
+    schema = Metadata.schema_from_fb_struct(fb_footer.schema)
+
+    batches =
+      fb_footer.recordBatches
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(fn block -> decode_batch_block(binary, block, schema) end)
+
+    %{schema: schema, batches: batches}
+  end
+
+  defp decode_batch_block(binary, block, schema) do
+    # The block's `offset` points at the continuation marker. The
+    # framing prefix is 8 bytes (continuation + length), then the
+    # padded metadata bytes (metaDataLength - 8), then the body bytes
+    # (bodyLength).
+    off = block.offset
+    meta_len_with_prefix = block.metaDataLength
+    body_len = block.bodyLength
+    meta_bytes_len = meta_len_with_prefix - 8
+
+    <<_::binary-size(off + 8), metadata::binary-size(meta_bytes_len),
+      body::binary-size(body_len), _rest::binary>> = binary
+
+    fb_message = Flatbuf.Message.decode_at(metadata, Wire.root_table_pos(metadata))
+
+    case fb_message.header do
+      {:RecordBatch, fb_rb} ->
+        nodes = Enum.map(fb_rb.nodes, fn n -> %{length: n.length, null_count: n.null_count} end)
+        buffers = Enum.map(fb_rb.buffers, fn b -> %{offset: b.offset, length: b.length} end)
+        Body.decode(schema, fb_rb.length, nodes, buffers, body)
+
+      other ->
+        raise ArgumentError, "file Block points at non-RecordBatch message: #{inspect(other)}"
+    end
+  end
+end
