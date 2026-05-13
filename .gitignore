@@ -22,3 +22,6 @@ erl_crash.dump
 # Ignore package tarball (built via "mix hex.build").
 arrow-*.tar
 
+# Cross-language integration fixtures, pulled by `mix arrow.testing.fixtures`.
+/priv/arrow-testing/
+

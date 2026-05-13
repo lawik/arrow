@@ -37,6 +37,10 @@ defmodule Arrow.Json.Reader do
   end
 
   defp read_field(%{"name" => name, "type" => type_map} = map) do
+    if Map.has_key?(map, "dictionary") do
+      raise ArgumentError, "unsupported type: dictionary-encoded field #{inspect(name)}"
+    end
+
     %Field{
       name: name,
       type: read_type(type_map),
