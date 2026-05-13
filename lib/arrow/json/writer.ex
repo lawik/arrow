@@ -74,6 +74,30 @@ defmodule Arrow.Json.Writer do
   defp write_type(%Type.List{}), do: %{"name" => "list"}
   defp write_type(%Type.Struct{}), do: %{"name" => "struct"}
 
+  defp write_type(%Type.Time{bit_width: bw, unit: unit}) do
+    %{"name" => "time", "bitWidth" => bw, "unit" => time_unit_string(unit)}
+  end
+
+  defp write_type(%Type.Duration{unit: unit}) do
+    %{"name" => "duration", "unit" => time_unit_string(unit)}
+  end
+
+  defp write_type(%Type.FixedSizeBinary{byte_width: bw}) do
+    %{"name" => "fixedsizebinary", "byteWidth" => bw}
+  end
+
+  defp write_type(%Type.FixedSizeList{list_size: n}) do
+    %{"name" => "fixedsizelist", "listSize" => n}
+  end
+
+  defp write_type(%Type.Decimal{bit_width: bw, precision: p, scale: s}) do
+    %{"name" => "decimal", "bitWidth" => bw, "precision" => p, "scale" => s}
+  end
+
+  defp write_type(%Type.Map{keys_sorted: ks}) do
+    %{"name" => "map", "keysSorted" => ks}
+  end
+
   defp precision_string(:half), do: "HALF"
   defp precision_string(:single), do: "SINGLE"
   defp precision_string(:double), do: "DOUBLE"
@@ -216,6 +240,99 @@ defmodule Arrow.Json.Writer do
     base
     |> Map.put("VALIDITY", validity_list(a.validity, a.length))
     |> Map.put("children", children)
+  end
+
+  ## ----- Time -----
+  defp write_column_body(base, %Field{type: %Type.Time{bit_width: 32}}, %Array.Time32{} = a) do
+    values = Buffer.unpack_primitive(a.values, :int32, a.length)
+
+    base
+    |> Map.put("VALIDITY", validity_list(a.validity, a.length))
+    |> Map.put("DATA", values)
+  end
+
+  defp write_column_body(base, %Field{type: %Type.Time{bit_width: 64}}, %Array.Time64{} = a) do
+    values = Buffer.unpack_primitive(a.values, :int64, a.length)
+
+    base
+    |> Map.put("VALIDITY", validity_list(a.validity, a.length))
+    |> Map.put("DATA", Enum.map(values, &Integer.to_string/1))
+  end
+
+  ## ----- Duration -----
+  defp write_column_body(base, %Field{type: %Type.Duration{}}, %Array.Duration{} = a) do
+    values = Buffer.unpack_primitive(a.values, :int64, a.length)
+
+    base
+    |> Map.put("VALIDITY", validity_list(a.validity, a.length))
+    |> Map.put("DATA", Enum.map(values, &Integer.to_string/1))
+  end
+
+  ## ----- FixedSizeBinary -----
+  defp write_column_body(
+         base,
+         %Field{type: %Type.FixedSizeBinary{byte_width: bw}},
+         %Array.FixedSizeBinary{} = a
+       ) do
+    data =
+      for <<slot::binary-size(bw) <- a.values>>, do: Base.encode16(slot)
+
+    base
+    |> Map.put("VALIDITY", validity_list(a.validity, a.length))
+    |> Map.put("DATA", data)
+  end
+
+  ## ----- FixedSizeList -----
+  defp write_column_body(
+         base,
+         %Field{type: %Type.FixedSizeList{}, children: [child_field]},
+         %Array.FixedSizeList{} = a
+       ) do
+    child_column = write_column(child_field, a.values)
+
+    base
+    |> Map.put("VALIDITY", validity_list(a.validity, a.length))
+    |> Map.put("children", [child_column])
+  end
+
+  ## ----- Decimal128 -----
+  defp write_column_body(
+         base,
+         %Field{type: %Type.Decimal{bit_width: 128}},
+         %Array.Decimal128{} = a
+       ) do
+    values = unpack_decimal128(a.values, a.length)
+
+    base
+    |> Map.put("VALIDITY", validity_list(a.validity, a.length))
+    |> Map.put("DATA", Enum.map(values, &Integer.to_string/1))
+  end
+
+  ## ----- Map -----
+  defp write_column_body(
+         base,
+         %Field{type: %Type.Map{}, children: [entries_field]},
+         %Array.Map{} = a
+       ) do
+    offsets = Buffer.unpack_int32_offsets(a.offsets, a.length)
+    entries_column = write_column(entries_field, a.values)
+
+    base
+    |> Map.put("VALIDITY", validity_list(a.validity, a.length))
+    |> Map.put("OFFSET", offsets)
+    |> Map.put("children", [entries_column])
+  end
+
+  defp unpack_decimal128(<<>>, 0), do: []
+
+  defp unpack_decimal128(binary, length) when length > 0 do
+    do_unpack_decimal128(binary, length, [])
+  end
+
+  defp do_unpack_decimal128(_binary, 0, acc), do: Enum.reverse(acc)
+
+  defp do_unpack_decimal128(<<v::little-signed-128, rest::binary>>, n, acc) do
+    do_unpack_decimal128(rest, n - 1, [v | acc])
   end
 
   ## ---------------------------------------------------------------------

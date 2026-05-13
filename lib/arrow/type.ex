@@ -86,6 +86,75 @@ defmodule Arrow.Type.Struct do
   @type t :: %__MODULE__{}
 end
 
+defmodule Arrow.Type.Time do
+  @moduledoc """
+  Time-of-day column. The Arrow FlatBuffers table parameterises both the bit
+  width and the unit:
+
+  - `bit_width: 32` with `:second` or `:millisecond` (`Time32`).
+  - `bit_width: 64` with `:microsecond` or `:nanosecond` (`Time64`).
+  """
+  defstruct [:unit, :bit_width]
+
+  @type unit :: :second | :millisecond | :microsecond | :nanosecond
+  @type bit_width :: 32 | 64
+  @type t :: %__MODULE__{unit: unit(), bit_width: bit_width()}
+end
+
+defmodule Arrow.Type.Duration do
+  @moduledoc "64-bit elapsed-time column in a fixed unit."
+  defstruct [:unit]
+
+  @type unit :: :second | :millisecond | :microsecond | :nanosecond
+  @type t :: %__MODULE__{unit: unit()}
+end
+
+defmodule Arrow.Type.FixedSizeBinary do
+  @moduledoc "Fixed-width opaque-bytes column. Every slot is `byte_width` bytes."
+  defstruct [:byte_width]
+
+  @type t :: %__MODULE__{byte_width: pos_integer()}
+end
+
+defmodule Arrow.Type.FixedSizeList do
+  @moduledoc """
+  Fixed-size list of an inner type. Every slot is exactly `list_size` items;
+  there is no offsets buffer. The inner type is the single child field of the
+  enclosing `Arrow.Field`.
+  """
+  defstruct [:list_size]
+
+  @type t :: %__MODULE__{list_size: pos_integer()}
+end
+
+defmodule Arrow.Type.Decimal do
+  @moduledoc """
+  Fixed-point decimal column. Stored as a little-endian two's-complement
+  integer of `bit_width` bits, scaled by `10^-scale`.
+
+  Tier 2 covers `bit_width: 128`; `256` is Tier 3.
+  """
+  defstruct [:bit_width, :precision, :scale]
+
+  @type bit_width :: 128 | 256
+  @type t :: %__MODULE__{
+          bit_width: bit_width(),
+          precision: pos_integer(),
+          scale: integer()
+        }
+end
+
+defmodule Arrow.Type.Map do
+  @moduledoc """
+  Map column. Structurally a `List<Struct<key, value>>` with a single child
+  field named "entries"; the entries struct's two children are the key and
+  value fields.
+  """
+  defstruct keys_sorted: false
+
+  @type t :: %__MODULE__{keys_sorted: boolean()}
+end
+
 defmodule Arrow.Type do
   @moduledoc """
   Arrow logical types. Each type is a distinct struct under `Arrow.Type.*`.
@@ -100,11 +169,17 @@ defmodule Arrow.Type do
     Binary,
     Bool,
     Date,
+    Decimal,
+    Duration,
+    FixedSizeBinary,
+    FixedSizeList,
     FloatingPoint,
     Int,
     List,
+    Map,
     Null,
     Struct,
+    Time,
     Timestamp,
     Utf8
   }
@@ -120,6 +195,12 @@ defmodule Arrow.Type do
           | %Timestamp{}
           | %List{}
           | %Struct{}
+          | %Time{}
+          | %Duration{}
+          | %FixedSizeBinary{}
+          | %FixedSizeList{}
+          | %Decimal{}
+          | %Map{}
 
   @doc "Returns the in-memory width in bits of a primitive numeric type."
   @spec bit_width(t()) :: pos_integer()
@@ -131,4 +212,7 @@ defmodule Arrow.Type do
   def bit_width(%Date{unit: :millisecond}), do: 64
   def bit_width(%Timestamp{}), do: 64
   def bit_width(%Bool{}), do: 1
+  def bit_width(%Time{bit_width: w}), do: w
+  def bit_width(%Duration{}), do: 64
+  def bit_width(%Decimal{bit_width: w}), do: w
 end

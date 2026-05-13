@@ -24,10 +24,13 @@
     "test"
   ],
   "words": [
+    "fixedsizebinary",
+    "fixedsizelist",
     "flatbuffer",
     "flatbuffers",
     "floatingpoint",
     "nanoarrow",
+    "parameterises",
     "prec",
     "unzoned"
   ]

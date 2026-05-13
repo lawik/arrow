@@ -84,6 +84,37 @@ defmodule Arrow.Json.Reader do
 
   defp read_type(%{"name" => "list"}), do: %Type.List{}
   defp read_type(%{"name" => "struct"}), do: %Type.Struct{}
+
+  defp read_type(%{"name" => "time", "bitWidth" => bw, "unit" => unit}) when bw in [32, 64] do
+    %Type.Time{bit_width: bw, unit: time_unit_atom(unit)}
+  end
+
+  defp read_type(%{"name" => "duration", "unit" => unit}) do
+    %Type.Duration{unit: time_unit_atom(unit)}
+  end
+
+  defp read_type(%{"name" => "fixedsizebinary", "byteWidth" => bw}) do
+    %Type.FixedSizeBinary{byte_width: bw}
+  end
+
+  defp read_type(%{"name" => "fixedsizelist", "listSize" => n}) do
+    %Type.FixedSizeList{list_size: n}
+  end
+
+  defp read_type(%{"name" => "decimal", "precision" => p, "scale" => s} = m) do
+    bw = Map.get(m, "bitWidth", 128)
+
+    if bw != 128 do
+      raise ArgumentError, "unsupported type: decimal#{bw} (Tier 2 covers decimal128 only)"
+    end
+
+    %Type.Decimal{bit_width: bw, precision: p, scale: s}
+  end
+
+  defp read_type(%{"name" => "map"} = m) do
+    %Type.Map{keys_sorted: Map.get(m, "keysSorted", false)}
+  end
+
   defp read_type(other), do: raise(ArgumentError, "unsupported type: #{inspect(other)}")
 
   defp precision_atom("HALF"), do: :half
@@ -301,6 +332,138 @@ defmodule Arrow.Json.Reader do
     }
   end
 
+  ## ----- Time -----
+  defp read_column_by_type(%Type.Time{bit_width: 32, unit: unit}, col, count, _children) do
+    {validity, null_count} = pack_validity_field(col["VALIDITY"], count)
+
+    values =
+      col |> Map.fetch!("DATA") |> Enum.map(&parse_integer/1) |> Buffer.pack_primitive(:int32)
+
+    %Array.Time32{
+      unit: unit,
+      length: count,
+      null_count: null_count,
+      validity: validity,
+      values: values
+    }
+  end
+
+  defp read_column_by_type(%Type.Time{bit_width: 64, unit: unit}, col, count, _children) do
+    {validity, null_count} = pack_validity_field(col["VALIDITY"], count)
+
+    values =
+      col |> Map.fetch!("DATA") |> Enum.map(&parse_integer/1) |> Buffer.pack_primitive(:int64)
+
+    %Array.Time64{
+      unit: unit,
+      length: count,
+      null_count: null_count,
+      validity: validity,
+      values: values
+    }
+  end
+
+  ## ----- Duration -----
+  defp read_column_by_type(%Type.Duration{unit: unit}, col, count, _children) do
+    {validity, null_count} = pack_validity_field(col["VALIDITY"], count)
+
+    values =
+      col |> Map.fetch!("DATA") |> Enum.map(&parse_integer/1) |> Buffer.pack_primitive(:int64)
+
+    %Array.Duration{
+      unit: unit,
+      length: count,
+      null_count: null_count,
+      validity: validity,
+      values: values
+    }
+  end
+
+  ## ----- FixedSizeBinary -----
+  defp read_column_by_type(%Type.FixedSizeBinary{byte_width: bw}, col, count, _children) do
+    {validity, null_count} = pack_validity_field(col["VALIDITY"], count)
+    chunks = col |> Map.fetch!("DATA") |> Enum.map(&decode_fixed_hex(&1, bw))
+    values = IO.iodata_to_binary(chunks)
+
+    %Array.FixedSizeBinary{
+      byte_width: bw,
+      length: count,
+      null_count: null_count,
+      validity: validity,
+      values: values
+    }
+  end
+
+  ## ----- FixedSizeList -----
+  defp read_column_by_type(%Type.FixedSizeList{list_size: n}, col, count, [child_field]) do
+    {validity, null_count} = pack_validity_field(col["VALIDITY"], count)
+    [child_col] = Map.fetch!(col, "children")
+    child_count = count * n
+    child_array = read_column(child_col, child_field, child_count)
+
+    %Array.FixedSizeList{
+      list_size: n,
+      length: count,
+      null_count: null_count,
+      validity: validity,
+      values: child_array
+    }
+  end
+
+  ## ----- Decimal128 -----
+  defp read_column_by_type(
+         %Type.Decimal{bit_width: 128, precision: p, scale: s},
+         col,
+         count,
+         _children
+       ) do
+    {validity, null_count} = pack_validity_field(col["VALIDITY"], count)
+
+    values =
+      col
+      |> Map.fetch!("DATA")
+      |> Enum.map(&parse_integer/1)
+      |> Enum.reduce(<<>>, fn v, acc -> <<acc::binary, v::little-signed-128>> end)
+
+    %Array.Decimal128{
+      precision: p,
+      scale: s,
+      length: count,
+      null_count: null_count,
+      validity: validity,
+      values: values
+    }
+  end
+
+  ## ----- Map -----
+  defp read_column_by_type(%Type.Map{keys_sorted: ks}, col, count, [entries_field]) do
+    {validity, null_count} = pack_validity_field(col["VALIDITY"], count)
+    raw_offsets = col |> Map.fetch!("OFFSET") |> Enum.map(&parse_integer/1)
+
+    if length(raw_offsets) != count + 1 do
+      raise ArgumentError,
+            "map OFFSET must have count+1 entries (got #{length(raw_offsets)} for count #{count})"
+    end
+
+    offsets =
+      raw_offsets
+      |> Enum.map(&<<&1::little-signed-32>>)
+      |> IO.iodata_to_binary()
+
+    [entries_col] = Map.fetch!(col, "children")
+    child_count = List.last(raw_offsets)
+    entries_array = read_column(entries_col, entries_field, child_count)
+
+    %Array.Map{
+      keys_sorted: ks,
+      length: count,
+      null_count: null_count,
+      validity: validity,
+      offsets: offsets,
+      values: entries_array
+    }
+  end
+
   ## ---------------------------------------------------------------------
   ## Validity helpers
   ## ---------------------------------------------------------------------
@@ -353,5 +516,16 @@ defmodule Arrow.Json.Reader do
 
   defp decode_hex(hex) when is_binary(hex) do
     hex |> String.upcase() |> Base.decode16!()
+  end
+
+  defp decode_fixed_hex(hex, byte_width) when is_binary(hex) do
+    bytes = decode_hex(hex)
+
+    if byte_size(bytes) != byte_width do
+      raise ArgumentError,
+            "fixedsizebinary slot expected #{byte_width} bytes, got #{byte_size(bytes)}"
+    end
+
+    bytes
   end
 end

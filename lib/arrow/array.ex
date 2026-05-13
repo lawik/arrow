@@ -136,6 +136,139 @@ defmodule Arrow.Array.Struct do
         }
 end
 
+defmodule Arrow.Array.Time32 do
+  @moduledoc """
+  32-bit time-of-day column. Values are little-endian signed `int32`s in the
+  declared `unit` (`:second` or `:millisecond`).
+  """
+  @enforce_keys [:unit, :length, :null_count, :values]
+  defstruct unit: nil, length: 0, null_count: 0, validity: nil, values: <<>>
+
+  @type t :: %__MODULE__{
+          unit: :second | :millisecond,
+          length: non_neg_integer(),
+          null_count: non_neg_integer(),
+          validity: binary() | nil,
+          values: binary()
+        }
+end
+
+defmodule Arrow.Array.Time64 do
+  @moduledoc """
+  64-bit time-of-day column. Values are little-endian signed `int64`s in the
+  declared `unit` (`:microsecond` or `:nanosecond`).
+  """
+  @enforce_keys [:unit, :length, :null_count, :values]
+  defstruct unit: nil, length: 0, null_count: 0, validity: nil, values: <<>>
+
+  @type t :: %__MODULE__{
+          unit: :microsecond | :nanosecond,
+          length: non_neg_integer(),
+          null_count: non_neg_integer(),
+          validity: binary() | nil,
+          values: binary()
+        }
+end
+
+defmodule Arrow.Array.Duration do
+  @moduledoc """
+  64-bit elapsed-time column. Values are little-endian signed `int64`s in the
+  declared `unit`.
+  """
+  @enforce_keys [:unit, :length, :null_count, :values]
+  defstruct unit: nil, length: 0, null_count: 0, validity: nil, values: <<>>
+
+  @type t :: %__MODULE__{
+          unit: Arrow.Type.Duration.unit(),
+          length: non_neg_integer(),
+          null_count: non_neg_integer(),
+          validity: binary() | nil,
+          values: binary()
+        }
+end
+
+defmodule Arrow.Array.FixedSizeBinary do
+  @moduledoc """
+  Fixed-width binary column. `values` is exactly `length * byte_width` bytes
+  (no offsets).
+  """
+  @enforce_keys [:byte_width, :length, :null_count, :values]
+  defstruct byte_width: 0, length: 0, null_count: 0, validity: nil, values: <<>>
+
+  @type t :: %__MODULE__{
+          byte_width: pos_integer(),
+          length: non_neg_integer(),
+          null_count: non_neg_integer(),
+          validity: binary() | nil,
+          values: binary()
+        }
+end
+
+defmodule Arrow.Array.FixedSizeList do
+  @moduledoc """
+  Fixed-size list column. The single child array `values` holds exactly
+  `length * list_size` items; there are no offsets.
+  """
+  @enforce_keys [:list_size, :length, :null_count, :values]
+  defstruct list_size: 0, length: 0, null_count: 0, validity: nil, values: nil
+
+  @type t :: %__MODULE__{
+          list_size: pos_integer(),
+          length: non_neg_integer(),
+          null_count: non_neg_integer(),
+          validity: binary() | nil,
+          values: Arrow.Array.t()
+        }
+end
+
+defmodule Arrow.Array.Decimal128 do
+  @moduledoc """
+  128-bit fixed-point decimal column. Values are little-endian two's-complement
+  16-byte integers. `precision` and `scale` come from the column's type, not
+  the array — but we carry them here for self-describing arrays.
+  """
+  @enforce_keys [:precision, :scale, :length, :null_count, :values]
+  defstruct precision: 0,
+            scale: 0,
+            length: 0,
+            null_count: 0,
+            validity: nil,
+            values: <<>>
+
+  @type t :: %__MODULE__{
+          precision: pos_integer(),
+          scale: integer(),
+          length: non_neg_integer(),
+          null_count: non_neg_integer(),
+          validity: binary() | nil,
+          values: binary()
+        }
+end
+
+defmodule Arrow.Array.Map do
+  @moduledoc """
+  Map column. Layout mirrors `Arrow.Array.List`: a validity bitmap and int32
+  offsets buffer with a child `values` array. The child is expected to be an
+  `Arrow.Array.Struct` whose two members are the key and the value.
+  """
+  @enforce_keys [:length, :null_count, :offsets, :values]
+  defstruct keys_sorted: false,
+            length: 0,
+            null_count: 0,
+            validity: nil,
+            offsets: <<>>,
+            values: nil
+
+  @type t :: %__MODULE__{
+          keys_sorted: boolean(),
+          length: non_neg_integer(),
+          null_count: non_neg_integer(),
+          validity: binary() | nil,
+          offsets: binary(),
+          values: Arrow.Array.Struct.t()
+        }
+end
+
 defmodule Arrow.Array do
   @moduledoc """
   Per-type column structs. Each module under `Arrow.Array.*` represents one
@@ -170,6 +303,10 @@ defmodule Arrow.Array do
     Bool,
     Date32,
     Date64,
+    Decimal128,
+    Duration,
+    FixedSizeBinary,
+    FixedSizeList,
     Float32,
     Float64,
     Int16,
@@ -177,8 +314,11 @@ defmodule Arrow.Array do
     Int64,
     Int8,
     List,
+    Map,
     Null,
     Struct,
+    Time32,
+    Time64,
     Timestamp,
     UInt16,
     UInt32,
@@ -207,6 +347,13 @@ defmodule Arrow.Array do
           | %Timestamp{}
           | %List{}
           | %Struct{}
+          | %Time32{}
+          | %Time64{}
+          | %Duration{}
+          | %FixedSizeBinary{}
+          | %FixedSizeList{}
+          | %Decimal128{}
+          | %Map{}
 
   @doc "The number of slots in the array (`length`)."
   @spec length(t()) :: non_neg_integer()

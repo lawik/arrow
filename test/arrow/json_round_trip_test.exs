@@ -406,6 +406,281 @@ defmodule Arrow.JsonRoundTripTest do
       round_trip(json)
   end
 
+  test "Time32[s] column" do
+    json = %{
+      "schema" => %{
+        "fields" => [
+          %{
+            "name" => "t",
+            "type" => %{"name" => "time", "bitWidth" => 32, "unit" => "SECOND"},
+            "nullable" => true,
+            "children" => []
+          }
+        ]
+      },
+      "batches" => [
+        %{
+          "count" => 3,
+          "columns" => [
+            %{"name" => "t", "count" => 3, "VALIDITY" => [1, 1, 1], "DATA" => [0, 3600, 86_399]}
+          ]
+        }
+      ]
+    }
+
+    {_schema, [%RecordBatch{columns: [%Arrow.Array.Time32{unit: :second}]}]} = round_trip(json)
+  end
+
+  test "Time64[ns] column" do
+    json = %{
+      "schema" => %{
+        "fields" => [
+          %{
+            "name" => "t",
+            "type" => %{"name" => "time", "bitWidth" => 64, "unit" => "NANOSECOND"},
+            "nullable" => true,
+            "children" => []
+          }
+        ]
+      },
+      "batches" => [
+        %{
+          "count" => 2,
+          "columns" => [
+            %{
+              "name" => "t",
+              "count" => 2,
+              "VALIDITY" => [1, 1],
+              "DATA" => ["0", "86399999999999"]
+            }
+          ]
+        }
+      ]
+    }
+
+    {_schema, [%RecordBatch{columns: [%Arrow.Array.Time64{unit: :nanosecond}]}]} =
+      round_trip(json)
+  end
+
+  test "Duration[us] column" do
+    json = %{
+      "schema" => %{
+        "fields" => [
+          %{
+            "name" => "d",
+            "type" => %{"name" => "duration", "unit" => "MICROSECOND"},
+            "nullable" => true,
+            "children" => []
+          }
+        ]
+      },
+      "batches" => [
+        %{
+          "count" => 2,
+          "columns" => [
+            %{
+              "name" => "d",
+              "count" => 2,
+              "VALIDITY" => [1, 1],
+              "DATA" => ["0", "1000000"]
+            }
+          ]
+        }
+      ]
+    }
+
+    {_schema, [%RecordBatch{columns: [%Arrow.Array.Duration{unit: :microsecond}]}]} =
+      round_trip(json)
+  end
+
+  test "FixedSizeBinary column" do
+    json = %{
+      "schema" => %{
+        "fields" => [
+          %{
+            "name" => "f",
+            "type" => %{"name" => "fixedsizebinary", "byteWidth" => 3},
+            "nullable" => true,
+            "children" => []
+          }
+        ]
+      },
+      "batches" => [
+        %{
+          "count" => 2,
+          "columns" => [
+            %{
+              "name" => "f",
+              "count" => 2,
+              "VALIDITY" => [1, 1],
+              "DATA" => ["DEADBE", "CAFEBA"]
+            }
+          ]
+        }
+      ]
+    }
+
+    {_schema, [%RecordBatch{columns: [%Arrow.Array.FixedSizeBinary{} = col]}]} = round_trip(json)
+    assert col.byte_width == 3
+    assert byte_size(col.values) == 6
+  end
+
+  test "FixedSizeList<Int32, 2> column" do
+    json = %{
+      "schema" => %{
+        "fields" => [
+          %{
+            "name" => "fl",
+            "type" => %{"name" => "fixedsizelist", "listSize" => 2},
+            "nullable" => true,
+            "children" => [
+              %{
+                "name" => "item",
+                "type" => %{"name" => "int", "bitWidth" => 32, "isSigned" => true},
+                "nullable" => true,
+                "children" => []
+              }
+            ]
+          }
+        ]
+      },
+      "batches" => [
+        %{
+          "count" => 2,
+          "columns" => [
+            %{
+              "name" => "fl",
+              "count" => 2,
+              "VALIDITY" => [1, 1],
+              "children" => [
+                %{
+                  "name" => "item",
+                  "count" => 4,
+                  "VALIDITY" => [1, 1, 1, 1],
+                  "DATA" => [10, 20, 30, 40]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+
+    {_schema, [%RecordBatch{columns: [%Arrow.Array.FixedSizeList{} = col]}]} = round_trip(json)
+    assert col.list_size == 2
+  end
+
+  test "Decimal128 column" do
+    json = %{
+      "schema" => %{
+        "fields" => [
+          %{
+            "name" => "d",
+            "type" => %{
+              "name" => "decimal",
+              "bitWidth" => 128,
+              "precision" => 5,
+              "scale" => 2
+            },
+            "nullable" => true,
+            "children" => []
+          }
+        ]
+      },
+      "batches" => [
+        %{
+          "count" => 3,
+          "columns" => [
+            %{
+              "name" => "d",
+              "count" => 3,
+              "VALIDITY" => [1, 0, 1],
+              "DATA" => ["12345", "0", "-99999"]
+            }
+          ]
+        }
+      ]
+    }
+
+    {_schema, [%RecordBatch{columns: [%Arrow.Array.Decimal128{} = col]}]} = round_trip(json)
+    assert col.precision == 5
+    assert col.scale == 2
+    assert byte_size(col.values) == 3 * 16
+  end
+
+  test "Map<Utf8, Int32> column" do
+    json = %{
+      "schema" => %{
+        "fields" => [
+          %{
+            "name" => "m",
+            "type" => %{"name" => "map", "keysSorted" => false},
+            "nullable" => true,
+            "children" => [
+              %{
+                "name" => "entries",
+                "type" => %{"name" => "struct"},
+                "nullable" => false,
+                "children" => [
+                  %{
+                    "name" => "key",
+                    "type" => %{"name" => "utf8"},
+                    "nullable" => false,
+                    "children" => []
+                  },
+                  %{
+                    "name" => "value",
+                    "type" => %{"name" => "int", "bitWidth" => 32, "isSigned" => true},
+                    "nullable" => true,
+                    "children" => []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "batches" => [
+        %{
+          "count" => 2,
+          "columns" => [
+            %{
+              "name" => "m",
+              "count" => 2,
+              "VALIDITY" => [1, 1],
+              "OFFSET" => [0, 2, 3],
+              "children" => [
+                %{
+                  "name" => "entries",
+                  "count" => 3,
+                  "VALIDITY" => [1, 1, 1],
+                  "children" => [
+                    %{
+                      "name" => "key",
+                      "count" => 3,
+                      "VALIDITY" => [1, 1, 1],
+                      "OFFSET" => [0, 1, 2, 3],
+                      "DATA" => ["a", "b", "c"]
+                    },
+                    %{
+                      "name" => "value",
+                      "count" => 3,
+                      "VALIDITY" => [1, 1, 1],
+                      "DATA" => [10, 20, 30]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+
+    {_schema, [%RecordBatch{columns: [%Arrow.Array.Map{} = col]}]} = round_trip(json)
+    refute col.keys_sorted
+  end
+
   test "schema metadata round-trips" do
     json = %{
       "schema" => %{
