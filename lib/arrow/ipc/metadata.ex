@@ -255,6 +255,10 @@ defmodule Arrow.Ipc.Metadata do
     {:Interval, %{unit: fb_interval_unit(unit)}}
   end
 
+  defp type_to_fb(%Arrow.Type.LargeUtf8{}), do: {:LargeUtf8, %{}}
+  defp type_to_fb(%Arrow.Type.LargeBinary{}), do: {:LargeBinary, %{}}
+  defp type_to_fb(%Arrow.Type.LargeList{}), do: {:LargeList, %{}}
+
   defp type_from_fb({:Null, _}), do: %Arrow.Type.Null{}
   defp type_from_fb({:Bool, _}), do: %Arrow.Type.Bool{}
 
@@ -308,11 +312,12 @@ defmodule Arrow.Ipc.Metadata do
     %Arrow.Type.Interval{unit: from_fb_interval_unit(unit)}
   end
 
+  defp type_from_fb({:LargeUtf8, _}), do: %Arrow.Type.LargeUtf8{}
+  defp type_from_fb({:LargeBinary, _}), do: %Arrow.Type.LargeBinary{}
+  defp type_from_fb({:LargeList, _}), do: %Arrow.Type.LargeList{}
+
   defp type_from_fb({variant, _})
        when variant in [
-              :LargeBinary,
-              :LargeUtf8,
-              :LargeList,
               :LargeListView,
               :ListView,
               :BinaryView,

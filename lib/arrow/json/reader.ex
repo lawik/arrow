@@ -135,6 +135,10 @@ defmodule Arrow.Json.Reader do
     %Type.Interval{unit: interval_unit_atom(unit)}
   end
 
+  defp read_type(%{"name" => "largeutf8"}), do: %Type.LargeUtf8{}
+  defp read_type(%{"name" => "largebinary"}), do: %Type.LargeBinary{}
+  defp read_type(%{"name" => "largelist"}), do: %Type.LargeList{}
+
   defp read_type(other), do: raise(ArgumentError, "unsupported type: #{inspect(other)}")
 
   defp precision_atom("HALF"), do: :half
@@ -502,6 +506,65 @@ defmodule Arrow.Json.Reader do
       validity: validity,
       values: values
     })
+  end
+
+  ## ----- LargeUtf8 / LargeBinary -----
+  defp read_column_by_type(%Type.LargeUtf8{}, col, count, _children) do
+    {validity, null_count} = pack_validity_field(col["VALIDITY"], count)
+    data = Map.fetch!(col, "DATA")
+    offsets = Buffer.pack_int64_offsets(Enum.map(data, &byte_size/1))
+    values = IO.iodata_to_binary(data)
+
+    %Array.LargeUtf8{
+      length: count,
+      null_count: null_count,
+      validity: validity,
+      offsets: offsets,
+      values: values
+    }
+  end
+
+  defp read_column_by_type(%Type.LargeBinary{}, col, count, _children) do
+    {validity, null_count} = pack_validity_field(col["VALIDITY"], count)
+    decoded = col |> Map.fetch!("DATA") |> Enum.map(&decode_hex/1)
+    offsets = Buffer.pack_int64_offsets(Enum.map(decoded, &byte_size/1))
+    values = IO.iodata_to_binary(decoded)
+
+    %Array.LargeBinary{
+      length: count,
+      null_count: null_count,
+      validity: validity,
+      offsets: offsets,
+      values: values
+    }
+  end
+
+  ## ----- LargeList -----
+  defp read_column_by_type(%Type.LargeList{}, col, count, [child_field]) do
+    {validity, null_count} = pack_validity_field(col["VALIDITY"], count)
+    raw_offsets = col |> Map.fetch!("OFFSET") |> Enum.map(&parse_integer/1)
+
+    if length(raw_offsets) != count + 1 do
+      raise ArgumentError,
+            "largelist OFFSET must have count+1 entries (got #{length(raw_offsets)} for count #{count})"
+    end
+
+    offsets =
+      raw_offsets
+      |> Enum.map(&<<&1::little-signed-64>>)
+      |> IO.iodata_to_binary()
+
+    [child_col] = Map.fetch!(col, "children")
+    child_count = List.last(raw_offsets)
+    child_array = read_column(child_col, child_field, child_count)
+
+    %Array.LargeList{
+      length: count,
+      null_count: null_count,
+      validity: validity,
+      offsets: offsets,
+      values: child_array
+    }
   end
 
   ## ----- Interval -----

@@ -155,6 +155,27 @@ defmodule Arrow.Type.Map do
   @type t :: %__MODULE__{keys_sorted: boolean()}
 end
 
+defmodule Arrow.Type.LargeUtf8 do
+  @moduledoc "Variable-length UTF-8 string column with 64-bit offsets."
+  defstruct []
+  @type t :: %__MODULE__{}
+end
+
+defmodule Arrow.Type.LargeBinary do
+  @moduledoc "Variable-length opaque byte column with 64-bit offsets."
+  defstruct []
+  @type t :: %__MODULE__{}
+end
+
+defmodule Arrow.Type.LargeList do
+  @moduledoc """
+  Variable-length list with 64-bit offsets. Otherwise identical to
+  `Arrow.Type.List`.
+  """
+  defstruct []
+  @type t :: %__MODULE__{}
+end
+
 defmodule Arrow.Type.Interval do
   @moduledoc """
   Interval column. Three concrete physical layouts:
@@ -216,6 +237,9 @@ defmodule Arrow.Type do
     Int,
     List,
     Interval,
+    LargeBinary,
+    LargeList,
+    LargeUtf8,
     Map,
     Null,
     Struct,
@@ -242,6 +266,9 @@ defmodule Arrow.Type do
           | %Decimal{}
           | %Map{}
           | %Interval{}
+          | %LargeUtf8{}
+          | %LargeBinary{}
+          | %LargeList{}
 
   @doc "Returns the in-memory width in bits of a primitive numeric type."
   @spec bit_width(t()) :: pos_integer()

@@ -277,6 +277,54 @@ defmodule Arrow.Array.Map do
         }
 end
 
+defmodule Arrow.Array.LargeUtf8 do
+  @moduledoc """
+  Variable-length UTF-8 column with 64-bit offsets. Same shape as
+  `Arrow.Array.Utf8` but `offsets` is `length + 1` little-endian `int64`s.
+  """
+  @enforce_keys [:length, :null_count, :offsets, :values]
+  defstruct length: 0, null_count: 0, validity: nil, offsets: <<>>, values: <<>>
+
+  @type t :: %__MODULE__{
+          length: non_neg_integer(),
+          null_count: non_neg_integer(),
+          validity: binary() | nil,
+          offsets: binary(),
+          values: binary()
+        }
+end
+
+defmodule Arrow.Array.LargeBinary do
+  @moduledoc "Variable-length opaque-bytes column with 64-bit offsets."
+  @enforce_keys [:length, :null_count, :offsets, :values]
+  defstruct length: 0, null_count: 0, validity: nil, offsets: <<>>, values: <<>>
+
+  @type t :: %__MODULE__{
+          length: non_neg_integer(),
+          null_count: non_neg_integer(),
+          validity: binary() | nil,
+          offsets: binary(),
+          values: binary()
+        }
+end
+
+defmodule Arrow.Array.LargeList do
+  @moduledoc """
+  Variable-length list with 64-bit offsets. Same shape as
+  `Arrow.Array.List` but `offsets` is `length + 1` little-endian `int64`s.
+  """
+  @enforce_keys [:length, :null_count, :offsets, :values]
+  defstruct length: 0, null_count: 0, validity: nil, offsets: <<>>, values: nil
+
+  @type t :: %__MODULE__{
+          length: non_neg_integer(),
+          null_count: non_neg_integer(),
+          validity: binary() | nil,
+          offsets: binary(),
+          values: Arrow.Array.t()
+        }
+end
+
 for mod <- [
       Arrow.Array.IntervalYearMonth,
       Arrow.Array.IntervalDayTime,
@@ -377,6 +425,9 @@ defmodule Arrow.Array do
     IntervalDayTime,
     IntervalMonthDayNano,
     IntervalYearMonth,
+    LargeBinary,
+    LargeList,
+    LargeUtf8,
     List,
     Map,
     Null,
@@ -425,6 +476,9 @@ defmodule Arrow.Array do
           | %IntervalYearMonth{}
           | %IntervalDayTime{}
           | %IntervalMonthDayNano{}
+          | %LargeUtf8{}
+          | %LargeBinary{}
+          | %LargeList{}
 
   @doc "The number of slots in the array (`length`)."
   @spec length(t()) :: non_neg_integer()

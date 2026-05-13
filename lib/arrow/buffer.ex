@@ -249,6 +249,47 @@ defmodule Arrow.Buffer do
     |> Enum.map(fn [from, to] -> binary_part(values, from, to - from) end)
   end
 
+  @doc """
+  `int64` analogue of `pack_int32_offsets/1`, used by `LargeUtf8`,
+  `LargeBinary`, and `LargeList`.
+  """
+  @spec pack_int64_offsets([non_neg_integer()]) :: binary()
+  def pack_int64_offsets(lengths) do
+    {offsets, _last} =
+      Enum.flat_map_reduce(lengths, 0, fn len, acc ->
+        next = acc + len
+        {[next], next}
+      end)
+
+    [0 | offsets]
+    |> Enum.map(&<<&1::little-signed-64>>)
+    |> IO.iodata_to_binary()
+  end
+
+  @doc "Unpacks an `int64` offsets buffer of `length + 1` entries."
+  @spec unpack_int64_offsets(binary(), non_neg_integer()) :: [integer()]
+  def unpack_int64_offsets(binary, length) when byte_size(binary) >= (length + 1) * 8 do
+    do_unpack_int64_offsets(binary, length + 1, [])
+  end
+
+  defp do_unpack_int64_offsets(_binary, 0, acc), do: Enum.reverse(acc)
+
+  defp do_unpack_int64_offsets(<<v::little-signed-64, rest::binary>>, n, acc) do
+    do_unpack_int64_offsets(rest, n - 1, [v | acc])
+  end
+
+  @doc """
+  `int64` analogue of `slice_variable/3`, used by `LargeUtf8` and
+  `LargeBinary`.
+  """
+  @spec slice_variable_large(binary(), binary(), non_neg_integer()) :: [binary()]
+  def slice_variable_large(offsets, values, length) do
+    offsets
+    |> unpack_int64_offsets(length)
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.map(fn [from, to] -> binary_part(values, from, to - from) end)
+  end
+
   ## ---------------------------------------------------------------------
   ## Alignment
   ## ---------------------------------------------------------------------

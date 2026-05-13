@@ -614,6 +614,115 @@ defmodule Arrow.JsonRoundTripTest do
     end
   end
 
+  test "LargeUtf8 column" do
+    json = %{
+      "schema" => %{
+        "fields" => [
+          %{
+            "name" => "s",
+            "type" => %{"name" => "largeutf8"},
+            "nullable" => true,
+            "children" => []
+          }
+        ]
+      },
+      "batches" => [
+        %{
+          "count" => 3,
+          "columns" => [
+            %{
+              "name" => "s",
+              "count" => 3,
+              "VALIDITY" => [1, 0, 1],
+              "OFFSET" => ["0", "3", "3", "6"],
+              "DATA" => ["foo", "", "bar"]
+            }
+          ]
+        }
+      ]
+    }
+
+    {_schema, [%RecordBatch{columns: [%Arrow.Array.LargeUtf8{} = col]}]} = round_trip(json)
+    # int64 offsets: 4 entries * 8 bytes
+    assert byte_size(col.offsets) == 32
+  end
+
+  test "LargeBinary column" do
+    json = %{
+      "schema" => %{
+        "fields" => [
+          %{
+            "name" => "b",
+            "type" => %{"name" => "largebinary"},
+            "nullable" => true,
+            "children" => []
+          }
+        ]
+      },
+      "batches" => [
+        %{
+          "count" => 2,
+          "columns" => [
+            %{
+              "name" => "b",
+              "count" => 2,
+              "VALIDITY" => [1, 1],
+              "OFFSET" => ["0", "2", "5"],
+              "DATA" => ["DEAD", "BEEFCA"]
+            }
+          ]
+        }
+      ]
+    }
+
+    {_schema, [%RecordBatch{columns: [%Arrow.Array.LargeBinary{}]}]} = round_trip(json)
+  end
+
+  test "LargeList<Int32>" do
+    json = %{
+      "schema" => %{
+        "fields" => [
+          %{
+            "name" => "l",
+            "type" => %{"name" => "largelist"},
+            "nullable" => true,
+            "children" => [
+              %{
+                "name" => "item",
+                "type" => %{"name" => "int", "bitWidth" => 32, "isSigned" => true},
+                "nullable" => true,
+                "children" => []
+              }
+            ]
+          }
+        ]
+      },
+      "batches" => [
+        %{
+          "count" => 3,
+          "columns" => [
+            %{
+              "name" => "l",
+              "count" => 3,
+              "VALIDITY" => [1, 1, 1],
+              "OFFSET" => ["0", "2", "2", "5"],
+              "children" => [
+                %{
+                  "name" => "item",
+                  "count" => 5,
+                  "VALIDITY" => [1, 1, 1, 1, 1],
+                  "DATA" => [10, 20, 30, 40, 50]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+
+    {_schema, [%RecordBatch{columns: [%Arrow.Array.LargeList{}]}]} = round_trip(json)
+  end
+
   test "Interval YEAR_MONTH" do
     json = %{
       "schema" => %{

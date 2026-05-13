@@ -163,6 +163,10 @@ defmodule Arrow.Json.Writer do
     %{"name" => "interval", "unit" => interval_unit_string(unit)}
   end
 
+  defp write_type(%Type.LargeUtf8{}), do: %{"name" => "largeutf8"}
+  defp write_type(%Type.LargeBinary{}), do: %{"name" => "largebinary"}
+  defp write_type(%Type.LargeList{}), do: %{"name" => "largelist"}
+
   defp interval_unit_string(:year_month), do: "YEAR_MONTH"
   defp interval_unit_string(:day_time), do: "DAY_TIME"
   defp interval_unit_string(:month_day_nano), do: "MONTH_DAY_NANO"
@@ -383,6 +387,43 @@ defmodule Arrow.Json.Writer do
     base
     |> Map.put("VALIDITY", validity_list(array.validity, array.length))
     |> Map.put("DATA", Enum.map(values, &Integer.to_string/1))
+  end
+
+  ## ----- LargeUtf8 -----
+  defp write_column_body(base, %Field{type: %Type.LargeUtf8{}}, %Array.LargeUtf8{} = a) do
+    strings = Buffer.slice_variable_large(a.offsets, a.values, a.length)
+    offsets = Buffer.unpack_int64_offsets(a.offsets, a.length)
+
+    base
+    |> Map.put("VALIDITY", validity_list(a.validity, a.length))
+    |> Map.put("OFFSET", Enum.map(offsets, &Integer.to_string/1))
+    |> Map.put("DATA", strings)
+  end
+
+  ## ----- LargeBinary -----
+  defp write_column_body(base, %Field{type: %Type.LargeBinary{}}, %Array.LargeBinary{} = a) do
+    chunks = Buffer.slice_variable_large(a.offsets, a.values, a.length)
+    offsets = Buffer.unpack_int64_offsets(a.offsets, a.length)
+
+    base
+    |> Map.put("VALIDITY", validity_list(a.validity, a.length))
+    |> Map.put("OFFSET", Enum.map(offsets, &Integer.to_string/1))
+    |> Map.put("DATA", Enum.map(chunks, &Base.encode16/1))
+  end
+
+  ## ----- LargeList -----
+  defp write_column_body(
+         base,
+         %Field{type: %Type.LargeList{}, children: [child_field]},
+         %Array.LargeList{} = a
+       ) do
+    offsets = Buffer.unpack_int64_offsets(a.offsets, a.length)
+    child_column = write_column(child_field, a.values)
+
+    base
+    |> Map.put("VALIDITY", validity_list(a.validity, a.length))
+    |> Map.put("OFFSET", Enum.map(offsets, &Integer.to_string/1))
+    |> Map.put("children", [child_column])
   end
 
   ## ----- Interval -----

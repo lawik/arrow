@@ -225,6 +225,32 @@ defmodule Arrow.Ipc.Body do
     |> push_buffer(a.values, byte_size(a.values))
   end
 
+  defp encode_array(%Array.LargeUtf8{} = a, acc) do
+    acc
+    |> push_node(a.length, a.null_count)
+    |> push_buffer(a.validity, bitmap_size(a.length))
+    |> push_buffer(a.offsets, byte_size(a.offsets))
+    |> push_buffer(a.values, byte_size(a.values))
+  end
+
+  defp encode_array(%Array.LargeBinary{} = a, acc) do
+    acc
+    |> push_node(a.length, a.null_count)
+    |> push_buffer(a.validity, bitmap_size(a.length))
+    |> push_buffer(a.offsets, byte_size(a.offsets))
+    |> push_buffer(a.values, byte_size(a.values))
+  end
+
+  defp encode_array(%Array.LargeList{} = a, acc) do
+    encode_array(
+      a.values,
+      acc
+      |> push_node(a.length, a.null_count)
+      |> push_buffer(a.validity, bitmap_size(a.length))
+      |> push_buffer(a.offsets, byte_size(a.offsets))
+    )
+  end
+
   defp encode_array(%Array.List{} = a, acc) do
     encode_array(
       a.values,
@@ -502,6 +528,43 @@ defmodule Arrow.Ipc.Body do
        offsets: take_slice(body, o),
        values: take_slice(body, d)
      }, ns, bs}
+  end
+
+  defp decode_array(%Field{type: %Arrow.Type.LargeUtf8{}}, [n | ns], [v, o, d | bs], body) do
+    {%Array.LargeUtf8{
+       length: n.length,
+       null_count: n.null_count,
+       validity: take_validity(body, v, n.length, n.null_count),
+       offsets: take_slice(body, o),
+       values: take_slice(body, d)
+     }, ns, bs}
+  end
+
+  defp decode_array(%Field{type: %Arrow.Type.LargeBinary{}}, [n | ns], [v, o, d | bs], body) do
+    {%Array.LargeBinary{
+       length: n.length,
+       null_count: n.null_count,
+       validity: take_validity(body, v, n.length, n.null_count),
+       offsets: take_slice(body, o),
+       values: take_slice(body, d)
+     }, ns, bs}
+  end
+
+  defp decode_array(
+         %Field{type: %Arrow.Type.LargeList{}, children: [child_field]},
+         [n | ns],
+         [v, o | bs],
+         body
+       ) do
+    {child_array, ns2, bs2} = decode_array(child_field, ns, bs, body)
+
+    {%Array.LargeList{
+       length: n.length,
+       null_count: n.null_count,
+       validity: take_validity(body, v, n.length, n.null_count),
+       offsets: take_slice(body, o),
+       values: child_array
+     }, ns2, bs2}
   end
 
   defp decode_array(

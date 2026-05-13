@@ -115,6 +115,26 @@ defmodule Arrow.Logical do
     apply_validity(a, slices)
   end
 
+  def to_list(%Array.LargeUtf8{} = a, _dicts) do
+    apply_validity(a, Buffer.slice_variable_large(a.offsets, a.values, a.length))
+  end
+
+  def to_list(%Array.LargeBinary{} = a, _dicts) do
+    apply_validity(a, Buffer.slice_variable_large(a.offsets, a.values, a.length))
+  end
+
+  def to_list(%Array.LargeList{} = a, dicts) do
+    offsets = Buffer.unpack_int64_offsets(a.offsets, a.length)
+    child = to_list(a.values, dicts)
+
+    slices =
+      offsets
+      |> Enum.chunk_every(2, 1, :discard)
+      |> Enum.map(fn [from, to] -> Enum.slice(child, from, to - from) end)
+
+    apply_validity(a, slices)
+  end
+
   def to_list(%Array.FixedSizeList{list_size: sz} = a, dicts) do
     child = to_list(a.values, dicts)
 
