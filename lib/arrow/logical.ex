@@ -73,10 +73,10 @@ defmodule Arrow.Logical do
   def to_list(%Array.Time64{} = a, _dicts), do: primitive_to_list(a, :int64)
   def to_list(%Array.Duration{} = a, _dicts), do: primitive_to_list(a, :int64)
 
-  def to_list(%Array.Decimal128{} = a, _dicts) do
-    values = unpack_decimal128(a.values, a.length)
-    apply_validity(a, values)
-  end
+  def to_list(%Array.Decimal32{} = a, _dicts), do: apply_validity(a, decimal_values(a, 32))
+  def to_list(%Array.Decimal64{} = a, _dicts), do: apply_validity(a, decimal_values(a, 64))
+  def to_list(%Array.Decimal128{} = a, _dicts), do: apply_validity(a, decimal_values(a, 128))
+  def to_list(%Array.Decimal256{} = a, _dicts), do: apply_validity(a, decimal_values(a, 256))
 
   def to_list(%Array.FixedSizeBinary{byte_width: w} = a, _dicts) do
     chunks = for <<slot::binary-size(w) <- a.values>>, do: slot
@@ -326,17 +326,27 @@ defmodule Arrow.Logical do
     end)
   end
 
-  defp unpack_decimal128(_binary, 0), do: []
+  defp decimal_values(a, bw), do: unpack_decimal(a.values, a.length, bw)
 
-  defp unpack_decimal128(binary, length) when length > 0 do
-    do_unpack_decimal128(binary, length, [])
+  defp unpack_decimal(_binary, 0, _bw), do: []
+
+  defp unpack_decimal(binary, length, bw) when length > 0 do
+    do_unpack_decimal(binary, length, bw, [])
   end
 
-  defp do_unpack_decimal128(_binary, 0, acc), do: Enum.reverse(acc)
+  defp do_unpack_decimal(_binary, 0, _bw, acc), do: Enum.reverse(acc)
 
-  defp do_unpack_decimal128(<<v::little-signed-128, rest::binary>>, n, acc) do
-    do_unpack_decimal128(rest, n - 1, [v | acc])
-  end
+  defp do_unpack_decimal(<<v::little-signed-32, rest::binary>>, n, 32, acc),
+    do: do_unpack_decimal(rest, n - 1, 32, [v | acc])
+
+  defp do_unpack_decimal(<<v::little-signed-64, rest::binary>>, n, 64, acc),
+    do: do_unpack_decimal(rest, n - 1, 64, [v | acc])
+
+  defp do_unpack_decimal(<<v::little-signed-128, rest::binary>>, n, 128, acc),
+    do: do_unpack_decimal(rest, n - 1, 128, [v | acc])
+
+  defp do_unpack_decimal(<<v::little-signed-256, rest::binary>>, n, 256, acc),
+    do: do_unpack_decimal(rest, n - 1, 256, [v | acc])
 
   # Turn a list of N per-child columns (each of length M) into a list of M
   # per-row tuples-as-lists. Used by the Struct walker.

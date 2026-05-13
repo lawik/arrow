@@ -221,28 +221,36 @@ defmodule Arrow.Array.FixedSizeList do
         }
 end
 
-defmodule Arrow.Array.Decimal128 do
-  @moduledoc """
-  128-bit fixed-point decimal column. Values are little-endian two's-complement
-  16-byte integers. `precision` and `scale` come from the column's type, not
-  the array — but we carry them here for self-describing arrays.
-  """
-  @enforce_keys [:precision, :scale, :length, :null_count, :values]
-  defstruct precision: 0,
-            scale: 0,
-            length: 0,
-            null_count: 0,
-            validity: nil,
-            values: <<>>
+for {mod, _bytes} <- [
+      {Arrow.Array.Decimal32, 4},
+      {Arrow.Array.Decimal64, 8},
+      {Arrow.Array.Decimal128, 16},
+      {Arrow.Array.Decimal256, 32}
+    ] do
+  defmodule mod do
+    @moduledoc """
+    Fixed-point decimal column. Values are little-endian two's-complement
+    integers of the type's bit width (4 / 8 / 16 / 32 bytes per slot).
+    `precision` and `scale` come from the column's type; we carry them on
+    the array so it's self-describing.
+    """
+    @enforce_keys [:precision, :scale, :length, :null_count, :values]
+    defstruct precision: 0,
+              scale: 0,
+              length: 0,
+              null_count: 0,
+              validity: nil,
+              values: <<>>
 
-  @type t :: %__MODULE__{
-          precision: pos_integer(),
-          scale: integer(),
-          length: non_neg_integer(),
-          null_count: non_neg_integer(),
-          validity: binary() | nil,
-          values: binary()
-        }
+    @type t :: %__MODULE__{
+            precision: pos_integer(),
+            scale: integer(),
+            length: non_neg_integer(),
+            null_count: non_neg_integer(),
+            validity: binary() | nil,
+            values: binary()
+          }
+  end
 end
 
 defmodule Arrow.Array.Map do
@@ -325,6 +333,9 @@ defmodule Arrow.Array do
     Date32,
     Date64,
     Decimal128,
+    Decimal256,
+    Decimal32,
+    Decimal64,
     Dictionary,
     Duration,
     FixedSizeBinary,
@@ -374,7 +385,10 @@ defmodule Arrow.Array do
           | %Duration{}
           | %FixedSizeBinary{}
           | %FixedSizeList{}
+          | %Decimal32{}
+          | %Decimal64{}
           | %Decimal128{}
+          | %Decimal256{}
           | %Map{}
           | %Dictionary{}
 

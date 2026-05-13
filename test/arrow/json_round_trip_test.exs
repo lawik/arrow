@@ -570,7 +570,51 @@ defmodule Arrow.JsonRoundTripTest do
     assert col.list_size == 2
   end
 
-  test "Decimal128 column" do
+  for bw <- [32, 64, 128, 256] do
+    array_mod = Module.concat(Arrow.Array, :"Decimal#{bw}")
+    max_val = Bitwise.bsl(1, bw - 1) - 1
+
+    test "Decimal#{bw} column" do
+      json = %{
+        "schema" => %{
+          "fields" => [
+            %{
+              "name" => "d",
+              "type" => %{
+                "name" => "decimal",
+                "bitWidth" => unquote(bw),
+                "precision" => 5,
+                "scale" => 2
+              },
+              "nullable" => true,
+              "children" => []
+            }
+          ]
+        },
+        "batches" => [
+          %{
+            "count" => 3,
+            "columns" => [
+              %{
+                "name" => "d",
+                "count" => 3,
+                "VALIDITY" => [1, 0, 1],
+                "DATA" => ["12345", "0", unquote(Integer.to_string(max_val))]
+              }
+            ]
+          }
+        ]
+      }
+
+      {_schema, [%RecordBatch{columns: [col]}]} = round_trip(json)
+      assert col.__struct__ == unquote(array_mod)
+      assert col.precision == 5
+      assert col.scale == 2
+      assert byte_size(col.values) == 3 * div(unquote(bw), 8)
+    end
+  end
+
+  test "Decimal128 column legacy" do
     json = %{
       "schema" => %{
         "fields" => [

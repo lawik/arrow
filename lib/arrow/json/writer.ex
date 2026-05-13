@@ -367,16 +367,13 @@ defmodule Arrow.Json.Writer do
     |> Map.put("children", [child_column])
   end
 
-  ## ----- Decimal128 -----
-  defp write_column_body(
-         base,
-         %Field{type: %Type.Decimal{bit_width: 128}},
-         %Array.Decimal128{} = a
-       ) do
-    values = unpack_decimal128(a.values, a.length)
+  ## ----- Decimal{32,64,128,256} -----
+  defp write_column_body(base, %Field{type: %Type.Decimal{bit_width: bw}}, array)
+       when bw in [32, 64, 128, 256] do
+    values = unpack_decimal_values(array.values, array.length, bw)
 
     base
-    |> Map.put("VALIDITY", validity_list(a.validity, a.length))
+    |> Map.put("VALIDITY", validity_list(array.validity, array.length))
     |> Map.put("DATA", Enum.map(values, &Integer.to_string/1))
   end
 
@@ -395,17 +392,25 @@ defmodule Arrow.Json.Writer do
     |> Map.put("children", [entries_column])
   end
 
-  defp unpack_decimal128(<<>>, 0), do: []
+  defp unpack_decimal_values(_binary, 0, _bw), do: []
 
-  defp unpack_decimal128(binary, length) when length > 0 do
-    do_unpack_decimal128(binary, length, [])
+  defp unpack_decimal_values(binary, length, bw) when length > 0 do
+    do_unpack_decimal(binary, length, bw, [])
   end
 
-  defp do_unpack_decimal128(_binary, 0, acc), do: Enum.reverse(acc)
+  defp do_unpack_decimal(_binary, 0, _bw, acc), do: Enum.reverse(acc)
 
-  defp do_unpack_decimal128(<<v::little-signed-128, rest::binary>>, n, acc) do
-    do_unpack_decimal128(rest, n - 1, [v | acc])
-  end
+  defp do_unpack_decimal(<<v::little-signed-32, rest::binary>>, n, 32, acc),
+    do: do_unpack_decimal(rest, n - 1, 32, [v | acc])
+
+  defp do_unpack_decimal(<<v::little-signed-64, rest::binary>>, n, 64, acc),
+    do: do_unpack_decimal(rest, n - 1, 64, [v | acc])
+
+  defp do_unpack_decimal(<<v::little-signed-128, rest::binary>>, n, 128, acc),
+    do: do_unpack_decimal(rest, n - 1, 128, [v | acc])
+
+  defp do_unpack_decimal(<<v::little-signed-256, rest::binary>>, n, 256, acc),
+    do: do_unpack_decimal(rest, n - 1, 256, [v | acc])
 
   ## ---------------------------------------------------------------------
   ## Helpers

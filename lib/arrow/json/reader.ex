@@ -120,8 +120,8 @@ defmodule Arrow.Json.Reader do
   defp read_type(%{"name" => "decimal", "precision" => p, "scale" => s} = m) do
     bw = Map.get(m, "bitWidth", 128)
 
-    if bw != 128 do
-      raise ArgumentError, "unsupported type: decimal#{bw} (Tier 2 covers decimal128 only)"
+    if bw not in [32, 64, 128, 256] do
+      raise ArgumentError, "unsupported type: decimal#{bw} (supported: 32, 64, 128, 256)"
     end
 
     %Type.Decimal{bit_width: bw, precision: p, scale: s}
@@ -470,29 +470,30 @@ defmodule Arrow.Json.Reader do
     }
   end
 
-  ## ----- Decimal128 -----
+  ## ----- Decimal{32,64,128,256} -----
   defp read_column_by_type(
-         %Type.Decimal{bit_width: 128, precision: p, scale: s},
+         %Type.Decimal{bit_width: bw, precision: p, scale: s},
          col,
          count,
          _children
-       ) do
+       )
+       when bw in [32, 64, 128, 256] do
     {validity, null_count} = pack_validity_field(col["VALIDITY"], count)
 
     values =
       col
       |> Map.fetch!("DATA")
       |> Enum.map(&parse_integer/1)
-      |> Enum.reduce(<<>>, fn v, acc -> <<acc::binary, v::little-signed-128>> end)
+      |> pack_decimal_values(bw)
 
-    %Array.Decimal128{
+    struct!(decimal_array_mod(bw), %{
       precision: p,
       scale: s,
       length: count,
       null_count: null_count,
       validity: validity,
       values: values
-    }
+    })
   end
 
   ## ----- Map -----
@@ -573,6 +574,23 @@ defmodule Arrow.Json.Reader do
 
   defp array_mod_for_float(:single), do: Array.Float32
   defp array_mod_for_float(:double), do: Array.Float64
+
+  defp decimal_array_mod(32), do: Array.Decimal32
+  defp decimal_array_mod(64), do: Array.Decimal64
+  defp decimal_array_mod(128), do: Array.Decimal128
+  defp decimal_array_mod(256), do: Array.Decimal256
+
+  defp pack_decimal_values(values, 32),
+    do: Enum.reduce(values, <<>>, fn v, acc -> <<acc::binary, v::little-signed-32>> end)
+
+  defp pack_decimal_values(values, 64),
+    do: Enum.reduce(values, <<>>, fn v, acc -> <<acc::binary, v::little-signed-64>> end)
+
+  defp pack_decimal_values(values, 128),
+    do: Enum.reduce(values, <<>>, fn v, acc -> <<acc::binary, v::little-signed-128>> end)
+
+  defp pack_decimal_values(values, 256),
+    do: Enum.reduce(values, <<>>, fn v, acc -> <<acc::binary, v::little-signed-256>> end)
 
   defp parse_integer(v) when is_integer(v), do: v
   defp parse_integer(v) when is_binary(v), do: String.to_integer(v)

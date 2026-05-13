@@ -182,7 +182,8 @@ defmodule Arrow.Ipc.Body do
     |> push_buffer(a.values, byte_size(a.values))
   end
 
-  defp encode_array(%Array.Decimal128{} = a, acc) do
+  defp encode_array(%mod{} = a, acc)
+       when mod in [Array.Decimal32, Array.Decimal64, Array.Decimal128, Array.Decimal256] do
     acc
     |> push_node(a.length, a.null_count)
     |> push_buffer(a.validity, bitmap_size(a.length))
@@ -424,19 +425,20 @@ defmodule Arrow.Ipc.Body do
   end
 
   defp decode_array(
-         %Field{type: %Arrow.Type.Decimal{bit_width: 128, precision: p, scale: s}},
+         %Field{type: %Arrow.Type.Decimal{bit_width: bw, precision: p, scale: s}},
          [n | ns],
          [v, d | bs],
          body
-       ) do
-    {%Array.Decimal128{
+       )
+       when bw in [32, 64, 128, 256] do
+    {struct!(decimal_array_mod(bw), %{
        precision: p,
        scale: s,
        length: n.length,
        null_count: n.null_count,
        validity: take_validity(body, v, n.length, n.null_count),
        values: take_slice(body, d)
-     }, ns, bs}
+     }), ns, bs}
   end
 
   defp decode_array(
@@ -569,6 +571,11 @@ defmodule Arrow.Ipc.Body do
 
   defp primitive_array_mod(%Arrow.Type.FloatingPoint{precision: :single}), do: Array.Float32
   defp primitive_array_mod(%Arrow.Type.FloatingPoint{precision: :double}), do: Array.Float64
+
+  defp decimal_array_mod(32), do: Array.Decimal32
+  defp decimal_array_mod(64), do: Array.Decimal64
+  defp decimal_array_mod(128), do: Array.Decimal128
+  defp decimal_array_mod(256), do: Array.Decimal256
 
   defp take_validity(_body, _b, _row_count, 0), do: nil
 
