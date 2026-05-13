@@ -47,6 +47,57 @@ defmodule Arrow.Ipc.Flatbuf.DictionaryBatch do
     Wire.end_table(b)
   end
 
+  @doc false
+  def __to_json_map__(value) when is_map(value) do
+    Map.new([
+      {"id", Map.get(value, :id)},
+      {"data",
+       if(Map.get(value, :data) == nil,
+         do: nil,
+         else: Arrow.Ipc.Flatbuf.RecordBatch.__to_json_map__(Map.get(value, :data))
+       )},
+      {"isDelta", Map.get(value, :isDelta)}
+    ])
+    |> Map.reject(fn {_k, v} -> v == nil or v == [] end)
+  end
+
+  @doc false
+  def __from_json_map__(map) when is_map(map) do
+    %__MODULE__{
+      id: Map.get(map, "id"),
+      data:
+        if(Map.get(map, "data") == nil,
+          do: nil,
+          else: Arrow.Ipc.Flatbuf.RecordBatch.__from_json_map__(Map.get(map, "data"))
+        ),
+      isDelta: Map.get(map, "isDelta")
+    }
+  end
+
+  @doc false
+  def __verify_at__(_buf, _pos, 0), do: {:error, :depth_exceeded}
+
+  def __verify_at__(buf, pos, depth) do
+    with {:ok, _vt_pos, _vt_size, _inline_size} <- Wire.verify_table_header(buf, pos) do
+      with :ok <-
+             (case Wire.read_vtable_field(buf, pos, 6) do
+                0 ->
+                  :ok
+
+                o ->
+                  case Wire.verify_follow_uoffset(buf, pos + o) do
+                    {:ok, abs_pos} ->
+                      Arrow.Ipc.Flatbuf.RecordBatch.__verify_at__(buf, abs_pos, depth - 1)
+
+                    err ->
+                      err
+                  end
+              end) do
+        :ok
+      end
+    end
+  end
+
   @doc "Read field `id` from a table at position `pos`. Returns the field value or its default."
   def decode_field_id(buf, pos) do
     case Wire.read_vtable_field(buf, pos, 4) do

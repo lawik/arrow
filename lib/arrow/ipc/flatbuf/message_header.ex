@@ -1,8 +1,6 @@
 defmodule Arrow.Ipc.Flatbuf.MessageHeader do
   @moduledoc "Generated from FlatBuffers union Arrow.Ipc.Flatbuf.MessageHeader. Do not edit."
 
-  alias Arrow.Ipc.Flatbuf.Wire, as: Wire
-
   @type t ::
           nil
           | {:Schema, Arrow.Ipc.Flatbuf.Schema.t()}
@@ -69,4 +67,70 @@ defmodule Arrow.Ipc.Flatbuf.MessageHeader do
   def build_variant(b, :RecordBatch, value), do: Arrow.Ipc.Flatbuf.RecordBatch.build(b, value)
   def build_variant(b, :Tensor, value), do: Arrow.Ipc.Flatbuf.Tensor.build(b, value)
   def build_variant(b, :SparseTensor, value), do: Arrow.Ipc.Flatbuf.SparseTensor.build(b, value)
+
+  # JSON helpers — used by table codegen for the paired `_type` and
+  # value keys flatc emits.
+
+  @doc false
+  # flatc emits the union `_type` key as `"NONE"` (not omitted) when
+  # the discriminator is 0, so match that to keep JSON comparisons
+  # aligned. The value side stays nil and gets dropped by the
+  # caller's `Map.reject`.
+  def __to_json_type__(nil), do: "NONE"
+  def __to_json_type__({variant, _value}), do: Atom.to_string(variant)
+
+  @doc false
+  def __to_json_value__(nil), do: nil
+  def __to_json_value__({:Schema, value}), do: Arrow.Ipc.Flatbuf.Schema.__to_json_map__(value)
+
+  def __to_json_value__({:DictionaryBatch, value}),
+    do: Arrow.Ipc.Flatbuf.DictionaryBatch.__to_json_map__(value)
+
+  def __to_json_value__({:RecordBatch, value}),
+    do: Arrow.Ipc.Flatbuf.RecordBatch.__to_json_map__(value)
+
+  def __to_json_value__({:Tensor, value}), do: Arrow.Ipc.Flatbuf.Tensor.__to_json_map__(value)
+
+  def __to_json_value__({:SparseTensor, value}),
+    do: Arrow.Ipc.Flatbuf.SparseTensor.__to_json_map__(value)
+
+  @doc false
+  def __from_json__(nil, _value), do: nil
+  def __from_json__("NONE", _value), do: nil
+
+  def __from_json__("Schema", value),
+    do: {:Schema, Arrow.Ipc.Flatbuf.Schema.__from_json_map__(value)}
+
+  def __from_json__("DictionaryBatch", value),
+    do: {:DictionaryBatch, Arrow.Ipc.Flatbuf.DictionaryBatch.__from_json_map__(value)}
+
+  def __from_json__("RecordBatch", value),
+    do: {:RecordBatch, Arrow.Ipc.Flatbuf.RecordBatch.__from_json_map__(value)}
+
+  def __from_json__("Tensor", value),
+    do: {:Tensor, Arrow.Ipc.Flatbuf.Tensor.__from_json_map__(value)}
+
+  def __from_json__("SparseTensor", value),
+    do: {:SparseTensor, Arrow.Ipc.Flatbuf.SparseTensor.__from_json_map__(value)}
+
+  @doc false
+  def __verify_variant__(_buf, 0, _abs_pos, _depth), do: :ok
+
+  def __verify_variant__(buf, 1, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.Schema.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 2, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.DictionaryBatch.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 3, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.RecordBatch.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 4, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.Tensor.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 5, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.SparseTensor.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(_buf, disc, _abs_pos, _depth),
+    do: {:error, {:unknown_union_variant, disc}}
 end

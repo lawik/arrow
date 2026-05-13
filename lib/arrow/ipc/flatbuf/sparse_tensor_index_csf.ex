@@ -103,6 +103,179 @@ defmodule Arrow.Ipc.Flatbuf.SparseTensorIndexCSF do
     Wire.end_table(b)
   end
 
+  @doc false
+  def __to_json_map__(value) when is_map(value) do
+    Map.new([
+      {"indptrType",
+       if(Map.get(value, :indptrType) == nil,
+         do: nil,
+         else: Arrow.Ipc.Flatbuf.Int.__to_json_map__(Map.get(value, :indptrType))
+       )},
+      {"indptrBuffers",
+       Enum.map(Map.get(value, :indptrBuffers) || [], fn v ->
+         if(v == nil, do: nil, else: Arrow.Ipc.Flatbuf.Buffer.__to_json_map__(v))
+       end)},
+      {"indicesType",
+       if(Map.get(value, :indicesType) == nil,
+         do: nil,
+         else: Arrow.Ipc.Flatbuf.Int.__to_json_map__(Map.get(value, :indicesType))
+       )},
+      {"indicesBuffers",
+       Enum.map(Map.get(value, :indicesBuffers) || [], fn v ->
+         if(v == nil, do: nil, else: Arrow.Ipc.Flatbuf.Buffer.__to_json_map__(v))
+       end)},
+      {"axisOrder", Enum.map(Map.get(value, :axisOrder) || [], fn v -> v end)}
+    ])
+    |> Map.reject(fn {_k, v} -> v == nil or v == [] end)
+  end
+
+  @doc false
+  def __from_json_map__(map) when is_map(map) do
+    %__MODULE__{
+      indptrType:
+        if(Map.get(map, "indptrType") == nil,
+          do: nil,
+          else: Arrow.Ipc.Flatbuf.Int.__from_json_map__(Map.get(map, "indptrType"))
+        ),
+      indptrBuffers:
+        Enum.map(Map.get(map, "indptrBuffers") || [], fn v ->
+          if(v == nil, do: nil, else: Arrow.Ipc.Flatbuf.Buffer.__from_json_map__(v))
+        end),
+      indicesType:
+        if(Map.get(map, "indicesType") == nil,
+          do: nil,
+          else: Arrow.Ipc.Flatbuf.Int.__from_json_map__(Map.get(map, "indicesType"))
+        ),
+      indicesBuffers:
+        Enum.map(Map.get(map, "indicesBuffers") || [], fn v ->
+          if(v == nil, do: nil, else: Arrow.Ipc.Flatbuf.Buffer.__from_json_map__(v))
+        end),
+      axisOrder: Enum.map(Map.get(map, "axisOrder") || [], fn v -> v end)
+    }
+  end
+
+  @doc false
+  def __verify_at__(_buf, _pos, 0), do: {:error, :depth_exceeded}
+
+  def __verify_at__(buf, pos, depth) do
+    with {:ok, _vt_pos, _vt_size, _inline_size} <- Wire.verify_table_header(buf, pos) do
+      with :ok <-
+             (case Wire.read_vtable_field(buf, pos, 4) do
+                0 ->
+                  :ok
+
+                o ->
+                  case Wire.verify_follow_uoffset(buf, pos + o) do
+                    {:ok, abs_pos} -> Arrow.Ipc.Flatbuf.Int.__verify_at__(buf, abs_pos, depth - 1)
+                    err -> err
+                  end
+              end),
+           :ok <-
+             (case Wire.read_vtable_field(buf, pos, 6) do
+                0 ->
+                  :ok
+
+                o ->
+                  case Wire.verify_follow_uoffset(buf, pos + o) do
+                    {:ok, vec_pos} ->
+                      case Wire.verify_vector_at(buf, vec_pos, 16) do
+                        {:ok, count} when count == 0 ->
+                          :ok
+
+                        {:ok, count} ->
+                          Enum.reduce_while(0..(count - 1), :ok, fn i, _acc ->
+                            elem_pos = Wire.vector_elem_pos(vec_pos, i, 16)
+
+                            case Wire.verify_bounds(buf, elem_pos, 16) do
+                              :ok -> {:cont, :ok}
+                              err -> {:halt, err}
+                            end
+                          end)
+
+                        err ->
+                          err
+                      end
+
+                    err ->
+                      err
+                  end
+              end),
+           :ok <-
+             (case Wire.read_vtable_field(buf, pos, 8) do
+                0 ->
+                  :ok
+
+                o ->
+                  case Wire.verify_follow_uoffset(buf, pos + o) do
+                    {:ok, abs_pos} -> Arrow.Ipc.Flatbuf.Int.__verify_at__(buf, abs_pos, depth - 1)
+                    err -> err
+                  end
+              end),
+           :ok <-
+             (case Wire.read_vtable_field(buf, pos, 10) do
+                0 ->
+                  :ok
+
+                o ->
+                  case Wire.verify_follow_uoffset(buf, pos + o) do
+                    {:ok, vec_pos} ->
+                      case Wire.verify_vector_at(buf, vec_pos, 16) do
+                        {:ok, count} when count == 0 ->
+                          :ok
+
+                        {:ok, count} ->
+                          Enum.reduce_while(0..(count - 1), :ok, fn i, _acc ->
+                            elem_pos = Wire.vector_elem_pos(vec_pos, i, 16)
+
+                            case Wire.verify_bounds(buf, elem_pos, 16) do
+                              :ok -> {:cont, :ok}
+                              err -> {:halt, err}
+                            end
+                          end)
+
+                        err ->
+                          err
+                      end
+
+                    err ->
+                      err
+                  end
+              end),
+           :ok <-
+             (case Wire.read_vtable_field(buf, pos, 12) do
+                0 ->
+                  :ok
+
+                o ->
+                  case Wire.verify_follow_uoffset(buf, pos + o) do
+                    {:ok, vec_pos} ->
+                      case Wire.verify_vector_at(buf, vec_pos, 4) do
+                        {:ok, count} when count == 0 ->
+                          :ok
+
+                        {:ok, count} ->
+                          Enum.reduce_while(0..(count - 1), :ok, fn i, _acc ->
+                            elem_pos = Wire.vector_elem_pos(vec_pos, i, 4)
+
+                            case Wire.verify_bounds(buf, elem_pos, 4) do
+                              :ok -> {:cont, :ok}
+                              err -> {:halt, err}
+                            end
+                          end)
+
+                        err ->
+                          err
+                      end
+
+                    err ->
+                      err
+                  end
+              end) do
+        :ok
+      end
+    end
+  end
+
   @doc "Read field `indptrType` from a table at position `pos`. Returns the field value or its default."
   def decode_field_indptrType(buf, pos) do
     case Wire.read_vtable_field(buf, pos, 4) do

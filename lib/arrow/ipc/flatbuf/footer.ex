@@ -110,6 +110,183 @@ defmodule Arrow.Ipc.Flatbuf.Footer do
     Wire.end_table(b)
   end
 
+  @doc false
+  def __to_json_map__(value) when is_map(value) do
+    Map.new([
+      {"version",
+       if(Map.get(value, :version) == nil,
+         do: nil,
+         else: Arrow.Ipc.Flatbuf.MetadataVersion.__to_json__(Map.get(value, :version))
+       )},
+      {"schema",
+       if(Map.get(value, :schema) == nil,
+         do: nil,
+         else: Arrow.Ipc.Flatbuf.Schema.__to_json_map__(Map.get(value, :schema))
+       )},
+      {"dictionaries",
+       Enum.map(Map.get(value, :dictionaries) || [], fn v ->
+         if(v == nil, do: nil, else: Arrow.Ipc.Flatbuf.Block.__to_json_map__(v))
+       end)},
+      {"recordBatches",
+       Enum.map(Map.get(value, :recordBatches) || [], fn v ->
+         if(v == nil, do: nil, else: Arrow.Ipc.Flatbuf.Block.__to_json_map__(v))
+       end)},
+      {"custom_metadata",
+       Enum.map(Map.get(value, :custom_metadata) || [], fn v ->
+         if(v == nil, do: nil, else: Arrow.Ipc.Flatbuf.KeyValue.__to_json_map__(v))
+       end)}
+    ])
+    |> Map.reject(fn {_k, v} -> v == nil or v == [] end)
+  end
+
+  @doc false
+  def __from_json_map__(map) when is_map(map) do
+    %__MODULE__{
+      version:
+        if(Map.get(map, "version") == nil,
+          do: nil,
+          else: Arrow.Ipc.Flatbuf.MetadataVersion.__from_json__(Map.get(map, "version"))
+        ),
+      schema:
+        if(Map.get(map, "schema") == nil,
+          do: nil,
+          else: Arrow.Ipc.Flatbuf.Schema.__from_json_map__(Map.get(map, "schema"))
+        ),
+      dictionaries:
+        Enum.map(Map.get(map, "dictionaries") || [], fn v ->
+          if(v == nil, do: nil, else: Arrow.Ipc.Flatbuf.Block.__from_json_map__(v))
+        end),
+      recordBatches:
+        Enum.map(Map.get(map, "recordBatches") || [], fn v ->
+          if(v == nil, do: nil, else: Arrow.Ipc.Flatbuf.Block.__from_json_map__(v))
+        end),
+      custom_metadata:
+        Enum.map(Map.get(map, "custom_metadata") || [], fn v ->
+          if(v == nil, do: nil, else: Arrow.Ipc.Flatbuf.KeyValue.__from_json_map__(v))
+        end)
+    }
+  end
+
+  @doc false
+  def __verify_at__(_buf, _pos, 0), do: {:error, :depth_exceeded}
+
+  def __verify_at__(buf, pos, depth) do
+    with {:ok, _vt_pos, _vt_size, _inline_size} <- Wire.verify_table_header(buf, pos) do
+      with :ok <-
+             (case Wire.read_vtable_field(buf, pos, 6) do
+                0 ->
+                  :ok
+
+                o ->
+                  case Wire.verify_follow_uoffset(buf, pos + o) do
+                    {:ok, abs_pos} ->
+                      Arrow.Ipc.Flatbuf.Schema.__verify_at__(buf, abs_pos, depth - 1)
+
+                    err ->
+                      err
+                  end
+              end),
+           :ok <-
+             (case Wire.read_vtable_field(buf, pos, 8) do
+                0 ->
+                  :ok
+
+                o ->
+                  case Wire.verify_follow_uoffset(buf, pos + o) do
+                    {:ok, vec_pos} ->
+                      case Wire.verify_vector_at(buf, vec_pos, 24) do
+                        {:ok, count} when count == 0 ->
+                          :ok
+
+                        {:ok, count} ->
+                          Enum.reduce_while(0..(count - 1), :ok, fn i, _acc ->
+                            elem_pos = Wire.vector_elem_pos(vec_pos, i, 24)
+
+                            case Wire.verify_bounds(buf, elem_pos, 24) do
+                              :ok -> {:cont, :ok}
+                              err -> {:halt, err}
+                            end
+                          end)
+
+                        err ->
+                          err
+                      end
+
+                    err ->
+                      err
+                  end
+              end),
+           :ok <-
+             (case Wire.read_vtable_field(buf, pos, 10) do
+                0 ->
+                  :ok
+
+                o ->
+                  case Wire.verify_follow_uoffset(buf, pos + o) do
+                    {:ok, vec_pos} ->
+                      case Wire.verify_vector_at(buf, vec_pos, 24) do
+                        {:ok, count} when count == 0 ->
+                          :ok
+
+                        {:ok, count} ->
+                          Enum.reduce_while(0..(count - 1), :ok, fn i, _acc ->
+                            elem_pos = Wire.vector_elem_pos(vec_pos, i, 24)
+
+                            case Wire.verify_bounds(buf, elem_pos, 24) do
+                              :ok -> {:cont, :ok}
+                              err -> {:halt, err}
+                            end
+                          end)
+
+                        err ->
+                          err
+                      end
+
+                    err ->
+                      err
+                  end
+              end),
+           :ok <-
+             (case Wire.read_vtable_field(buf, pos, 12) do
+                0 ->
+                  :ok
+
+                o ->
+                  case Wire.verify_follow_uoffset(buf, pos + o) do
+                    {:ok, vec_pos} ->
+                      case Wire.verify_vector_at(buf, vec_pos, 4) do
+                        {:ok, count} when count == 0 ->
+                          :ok
+
+                        {:ok, count} ->
+                          Enum.reduce_while(0..(count - 1), :ok, fn i, _acc ->
+                            elem_pos = Wire.vector_elem_pos(vec_pos, i, 4)
+
+                            case (case Wire.verify_follow_uoffset(buf, elem_pos) do
+                                    {:ok, tp} ->
+                                      Arrow.Ipc.Flatbuf.KeyValue.__verify_at__(buf, tp, depth - 1)
+
+                                    e ->
+                                      e
+                                  end) do
+                              :ok -> {:cont, :ok}
+                              err -> {:halt, err}
+                            end
+                          end)
+
+                        err ->
+                          err
+                      end
+
+                    err ->
+                      err
+                  end
+              end) do
+        :ok
+      end
+    end
+  end
+
   @doc "Read field `version` from a table at position `pos`. Returns the field value or its default."
   def decode_field_version(buf, pos) do
     case Wire.read_vtable_field(buf, pos, 4) do

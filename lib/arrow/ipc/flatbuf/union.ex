@@ -41,6 +41,71 @@ defmodule Arrow.Ipc.Flatbuf.Union do
     Wire.end_table(b)
   end
 
+  @doc false
+  def __to_json_map__(value) when is_map(value) do
+    Map.new([
+      {"mode",
+       if(Map.get(value, :mode) == nil,
+         do: nil,
+         else: Arrow.Ipc.Flatbuf.UnionMode.__to_json__(Map.get(value, :mode))
+       )},
+      {"typeIds", Enum.map(Map.get(value, :typeIds) || [], fn v -> v end)}
+    ])
+    |> Map.reject(fn {_k, v} -> v == nil or v == [] end)
+  end
+
+  @doc false
+  def __from_json_map__(map) when is_map(map) do
+    %__MODULE__{
+      mode:
+        if(Map.get(map, "mode") == nil,
+          do: nil,
+          else: Arrow.Ipc.Flatbuf.UnionMode.__from_json__(Map.get(map, "mode"))
+        ),
+      typeIds: Enum.map(Map.get(map, "typeIds") || [], fn v -> v end)
+    }
+  end
+
+  @doc false
+  def __verify_at__(_buf, _pos, 0), do: {:error, :depth_exceeded}
+
+  def __verify_at__(buf, pos, _depth) do
+    with {:ok, _vt_pos, _vt_size, _inline_size} <- Wire.verify_table_header(buf, pos) do
+      with :ok <-
+             (case Wire.read_vtable_field(buf, pos, 6) do
+                0 ->
+                  :ok
+
+                o ->
+                  case Wire.verify_follow_uoffset(buf, pos + o) do
+                    {:ok, vec_pos} ->
+                      case Wire.verify_vector_at(buf, vec_pos, 4) do
+                        {:ok, count} when count == 0 ->
+                          :ok
+
+                        {:ok, count} ->
+                          Enum.reduce_while(0..(count - 1), :ok, fn i, _acc ->
+                            elem_pos = Wire.vector_elem_pos(vec_pos, i, 4)
+
+                            case Wire.verify_bounds(buf, elem_pos, 4) do
+                              :ok -> {:cont, :ok}
+                              err -> {:halt, err}
+                            end
+                          end)
+
+                        err ->
+                          err
+                      end
+
+                    err ->
+                      err
+                  end
+              end) do
+        :ok
+      end
+    end
+  end
+
   @doc "Read field `mode` from a table at position `pos`. Returns the field value or its default."
   def decode_field_mode(buf, pos) do
     case Wire.read_vtable_field(buf, pos, 4) do

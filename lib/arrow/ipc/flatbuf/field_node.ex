@@ -27,4 +27,20 @@ defmodule Arrow.Ipc.Flatbuf.FieldNode do
     <<Map.get(value, :length, 0)::little-signed-64,
       Map.get(value, :null_count, 0)::little-signed-64>>
   end
+
+  @doc false
+  def __to_json_map__(value) when is_map(value) do
+    %{
+      "length" => Map.get(value, :length),
+      "null_count" => Map.get(value, :null_count)
+    }
+  end
+
+  @doc false
+  def __from_json_map__(map) when is_map(map) do
+    %__MODULE__{
+      length: Map.get(map, "length"),
+      null_count: Map.get(map, "null_count")
+    }
+  end
 end

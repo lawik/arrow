@@ -26,7 +26,25 @@ defmodule Arrow.Ipc.Flatbuf.Block do
     _ = value
 
     <<Map.get(value, :offset, 0)::little-signed-64,
-      Map.get(value, :metaDataLength, 0)::little-signed-32, <<0::size(32)>>,
+      Map.get(value, :metaDataLength, 0)::little-signed-32, 0::size(32),
       Map.get(value, :bodyLength, 0)::little-signed-64>>
+  end
+
+  @doc false
+  def __to_json_map__(value) when is_map(value) do
+    %{
+      "offset" => Map.get(value, :offset),
+      "metaDataLength" => Map.get(value, :metaDataLength),
+      "bodyLength" => Map.get(value, :bodyLength)
+    }
+  end
+
+  @doc false
+  def __from_json_map__(map) when is_map(map) do
+    %__MODULE__{
+      offset: Map.get(map, "offset"),
+      metaDataLength: Map.get(map, "metaDataLength"),
+      bodyLength: Map.get(map, "bodyLength")
+    }
   end
 end

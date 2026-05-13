@@ -32,6 +32,44 @@ defmodule Arrow.Ipc.Flatbuf.TensorDim do
     Wire.end_table(b)
   end
 
+  @doc false
+  def __to_json_map__(value) when is_map(value) do
+    Map.new([
+      {"size", Map.get(value, :size)},
+      {"name", Map.get(value, :name)}
+    ])
+    |> Map.reject(fn {_k, v} -> v == nil or v == [] end)
+  end
+
+  @doc false
+  def __from_json_map__(map) when is_map(map) do
+    %__MODULE__{
+      size: Map.get(map, "size"),
+      name: Map.get(map, "name")
+    }
+  end
+
+  @doc false
+  def __verify_at__(_buf, _pos, 0), do: {:error, :depth_exceeded}
+
+  def __verify_at__(buf, pos, _depth) do
+    with {:ok, _vt_pos, _vt_size, _inline_size} <- Wire.verify_table_header(buf, pos) do
+      with :ok <-
+             (case Wire.read_vtable_field(buf, pos, 6) do
+                0 ->
+                  :ok
+
+                o ->
+                  case Wire.verify_follow_uoffset(buf, pos + o) do
+                    {:ok, abs_pos} -> Wire.verify_string_at(buf, abs_pos)
+                    err -> err
+                  end
+              end) do
+        :ok
+      end
+    end
+  end
+
   @doc "Read field `size` from a table at position `pos`. Returns the field value or its default."
   def decode_field_size(buf, pos) do
     case Wire.read_vtable_field(buf, pos, 4) do

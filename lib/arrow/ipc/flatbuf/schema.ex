@@ -84,6 +84,165 @@ defmodule Arrow.Ipc.Flatbuf.Schema do
     Wire.end_table(b)
   end
 
+  @doc false
+  def __to_json_map__(value) when is_map(value) do
+    Map.new([
+      {"endianness",
+       if(Map.get(value, :endianness) == nil,
+         do: nil,
+         else: Arrow.Ipc.Flatbuf.Endianness.__to_json__(Map.get(value, :endianness))
+       )},
+      {"fields",
+       Enum.map(Map.get(value, :fields) || [], fn v ->
+         if(v == nil, do: nil, else: Arrow.Ipc.Flatbuf.Field.__to_json_map__(v))
+       end)},
+      {"custom_metadata",
+       Enum.map(Map.get(value, :custom_metadata) || [], fn v ->
+         if(v == nil, do: nil, else: Arrow.Ipc.Flatbuf.KeyValue.__to_json_map__(v))
+       end)},
+      {"features",
+       Enum.map(Map.get(value, :features) || [], fn v ->
+         if(v == nil, do: nil, else: Arrow.Ipc.Flatbuf.Feature.__to_json__(v))
+       end)}
+    ])
+    |> Map.reject(fn {_k, v} -> v == nil or v == [] end)
+  end
+
+  @doc false
+  def __from_json_map__(map) when is_map(map) do
+    %__MODULE__{
+      endianness:
+        if(Map.get(map, "endianness") == nil,
+          do: nil,
+          else: Arrow.Ipc.Flatbuf.Endianness.__from_json__(Map.get(map, "endianness"))
+        ),
+      fields:
+        Enum.map(Map.get(map, "fields") || [], fn v ->
+          if(v == nil, do: nil, else: Arrow.Ipc.Flatbuf.Field.__from_json_map__(v))
+        end),
+      custom_metadata:
+        Enum.map(Map.get(map, "custom_metadata") || [], fn v ->
+          if(v == nil, do: nil, else: Arrow.Ipc.Flatbuf.KeyValue.__from_json_map__(v))
+        end),
+      features:
+        Enum.map(Map.get(map, "features") || [], fn v ->
+          if(v == nil, do: nil, else: Arrow.Ipc.Flatbuf.Feature.__from_json__(v))
+        end)
+    }
+  end
+
+  @doc false
+  def __verify_at__(_buf, _pos, 0), do: {:error, :depth_exceeded}
+
+  def __verify_at__(buf, pos, depth) do
+    with {:ok, _vt_pos, _vt_size, _inline_size} <- Wire.verify_table_header(buf, pos) do
+      with :ok <-
+             (case Wire.read_vtable_field(buf, pos, 6) do
+                0 ->
+                  :ok
+
+                o ->
+                  case Wire.verify_follow_uoffset(buf, pos + o) do
+                    {:ok, vec_pos} ->
+                      case Wire.verify_vector_at(buf, vec_pos, 4) do
+                        {:ok, count} when count == 0 ->
+                          :ok
+
+                        {:ok, count} ->
+                          Enum.reduce_while(0..(count - 1), :ok, fn i, _acc ->
+                            elem_pos = Wire.vector_elem_pos(vec_pos, i, 4)
+
+                            case (case Wire.verify_follow_uoffset(buf, elem_pos) do
+                                    {:ok, tp} ->
+                                      Arrow.Ipc.Flatbuf.Field.__verify_at__(buf, tp, depth - 1)
+
+                                    e ->
+                                      e
+                                  end) do
+                              :ok -> {:cont, :ok}
+                              err -> {:halt, err}
+                            end
+                          end)
+
+                        err ->
+                          err
+                      end
+
+                    err ->
+                      err
+                  end
+              end),
+           :ok <-
+             (case Wire.read_vtable_field(buf, pos, 8) do
+                0 ->
+                  :ok
+
+                o ->
+                  case Wire.verify_follow_uoffset(buf, pos + o) do
+                    {:ok, vec_pos} ->
+                      case Wire.verify_vector_at(buf, vec_pos, 4) do
+                        {:ok, count} when count == 0 ->
+                          :ok
+
+                        {:ok, count} ->
+                          Enum.reduce_while(0..(count - 1), :ok, fn i, _acc ->
+                            elem_pos = Wire.vector_elem_pos(vec_pos, i, 4)
+
+                            case (case Wire.verify_follow_uoffset(buf, elem_pos) do
+                                    {:ok, tp} ->
+                                      Arrow.Ipc.Flatbuf.KeyValue.__verify_at__(buf, tp, depth - 1)
+
+                                    e ->
+                                      e
+                                  end) do
+                              :ok -> {:cont, :ok}
+                              err -> {:halt, err}
+                            end
+                          end)
+
+                        err ->
+                          err
+                      end
+
+                    err ->
+                      err
+                  end
+              end),
+           :ok <-
+             (case Wire.read_vtable_field(buf, pos, 10) do
+                0 ->
+                  :ok
+
+                o ->
+                  case Wire.verify_follow_uoffset(buf, pos + o) do
+                    {:ok, vec_pos} ->
+                      case Wire.verify_vector_at(buf, vec_pos, 8) do
+                        {:ok, count} when count == 0 ->
+                          :ok
+
+                        {:ok, count} ->
+                          Enum.reduce_while(0..(count - 1), :ok, fn i, _acc ->
+                            elem_pos = Wire.vector_elem_pos(vec_pos, i, 8)
+
+                            case Wire.verify_bounds(buf, elem_pos, 8) do
+                              :ok -> {:cont, :ok}
+                              err -> {:halt, err}
+                            end
+                          end)
+
+                        err ->
+                          err
+                      end
+
+                    err ->
+                      err
+                  end
+              end) do
+        :ok
+      end
+    end
+  end
+
   @doc "Read field `endianness` from a table at position `pos`. Returns the field value or its default."
   def decode_field_endianness(buf, pos) do
     case Wire.read_vtable_field(buf, pos, 4) do

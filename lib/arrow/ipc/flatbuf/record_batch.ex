@@ -93,6 +93,164 @@ defmodule Arrow.Ipc.Flatbuf.RecordBatch do
     Wire.end_table(b)
   end
 
+  @doc false
+  def __to_json_map__(value) when is_map(value) do
+    Map.new([
+      {"length", Map.get(value, :length)},
+      {"nodes",
+       Enum.map(Map.get(value, :nodes) || [], fn v ->
+         if(v == nil, do: nil, else: Arrow.Ipc.Flatbuf.FieldNode.__to_json_map__(v))
+       end)},
+      {"buffers",
+       Enum.map(Map.get(value, :buffers) || [], fn v ->
+         if(v == nil, do: nil, else: Arrow.Ipc.Flatbuf.Buffer.__to_json_map__(v))
+       end)},
+      {"compression",
+       if(Map.get(value, :compression) == nil,
+         do: nil,
+         else: Arrow.Ipc.Flatbuf.BodyCompression.__to_json_map__(Map.get(value, :compression))
+       )},
+      {"variadicBufferCounts",
+       Enum.map(Map.get(value, :variadicBufferCounts) || [], fn v -> v end)}
+    ])
+    |> Map.reject(fn {_k, v} -> v == nil or v == [] end)
+  end
+
+  @doc false
+  def __from_json_map__(map) when is_map(map) do
+    %__MODULE__{
+      length: Map.get(map, "length"),
+      nodes:
+        Enum.map(Map.get(map, "nodes") || [], fn v ->
+          if(v == nil, do: nil, else: Arrow.Ipc.Flatbuf.FieldNode.__from_json_map__(v))
+        end),
+      buffers:
+        Enum.map(Map.get(map, "buffers") || [], fn v ->
+          if(v == nil, do: nil, else: Arrow.Ipc.Flatbuf.Buffer.__from_json_map__(v))
+        end),
+      compression:
+        if(Map.get(map, "compression") == nil,
+          do: nil,
+          else: Arrow.Ipc.Flatbuf.BodyCompression.__from_json_map__(Map.get(map, "compression"))
+        ),
+      variadicBufferCounts: Enum.map(Map.get(map, "variadicBufferCounts") || [], fn v -> v end)
+    }
+  end
+
+  @doc false
+  def __verify_at__(_buf, _pos, 0), do: {:error, :depth_exceeded}
+
+  def __verify_at__(buf, pos, depth) do
+    with {:ok, _vt_pos, _vt_size, _inline_size} <- Wire.verify_table_header(buf, pos) do
+      with :ok <-
+             (case Wire.read_vtable_field(buf, pos, 6) do
+                0 ->
+                  :ok
+
+                o ->
+                  case Wire.verify_follow_uoffset(buf, pos + o) do
+                    {:ok, vec_pos} ->
+                      case Wire.verify_vector_at(buf, vec_pos, 16) do
+                        {:ok, count} when count == 0 ->
+                          :ok
+
+                        {:ok, count} ->
+                          Enum.reduce_while(0..(count - 1), :ok, fn i, _acc ->
+                            elem_pos = Wire.vector_elem_pos(vec_pos, i, 16)
+
+                            case Wire.verify_bounds(buf, elem_pos, 16) do
+                              :ok -> {:cont, :ok}
+                              err -> {:halt, err}
+                            end
+                          end)
+
+                        err ->
+                          err
+                      end
+
+                    err ->
+                      err
+                  end
+              end),
+           :ok <-
+             (case Wire.read_vtable_field(buf, pos, 8) do
+                0 ->
+                  :ok
+
+                o ->
+                  case Wire.verify_follow_uoffset(buf, pos + o) do
+                    {:ok, vec_pos} ->
+                      case Wire.verify_vector_at(buf, vec_pos, 16) do
+                        {:ok, count} when count == 0 ->
+                          :ok
+
+                        {:ok, count} ->
+                          Enum.reduce_while(0..(count - 1), :ok, fn i, _acc ->
+                            elem_pos = Wire.vector_elem_pos(vec_pos, i, 16)
+
+                            case Wire.verify_bounds(buf, elem_pos, 16) do
+                              :ok -> {:cont, :ok}
+                              err -> {:halt, err}
+                            end
+                          end)
+
+                        err ->
+                          err
+                      end
+
+                    err ->
+                      err
+                  end
+              end),
+           :ok <-
+             (case Wire.read_vtable_field(buf, pos, 10) do
+                0 ->
+                  :ok
+
+                o ->
+                  case Wire.verify_follow_uoffset(buf, pos + o) do
+                    {:ok, abs_pos} ->
+                      Arrow.Ipc.Flatbuf.BodyCompression.__verify_at__(buf, abs_pos, depth - 1)
+
+                    err ->
+                      err
+                  end
+              end),
+           :ok <-
+             (case Wire.read_vtable_field(buf, pos, 12) do
+                0 ->
+                  :ok
+
+                o ->
+                  case Wire.verify_follow_uoffset(buf, pos + o) do
+                    {:ok, vec_pos} ->
+                      case Wire.verify_vector_at(buf, vec_pos, 8) do
+                        {:ok, count} when count == 0 ->
+                          :ok
+
+                        {:ok, count} ->
+                          Enum.reduce_while(0..(count - 1), :ok, fn i, _acc ->
+                            elem_pos = Wire.vector_elem_pos(vec_pos, i, 8)
+
+                            case Wire.verify_bounds(buf, elem_pos, 8) do
+                              :ok -> {:cont, :ok}
+                              err -> {:halt, err}
+                            end
+                          end)
+
+                        err ->
+                          err
+                      end
+
+                    err ->
+                      err
+                  end
+              end) do
+        :ok
+      end
+    end
+  end
+
   @doc "Read field `length` from a table at position `pos`. Returns the field value or its default."
   def decode_field_length(buf, pos) do
     case Wire.read_vtable_field(buf, pos, 4) do

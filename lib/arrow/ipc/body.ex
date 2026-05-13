@@ -299,7 +299,12 @@ defmodule Arrow.Ipc.Body do
      }, ns, bs}
   end
 
-  defp decode_array(%Field{type: %Arrow.Type.Date{unit: :millisecond}}, [n | ns], [v, d | bs], body) do
+  defp decode_array(
+         %Field{type: %Arrow.Type.Date{unit: :millisecond}},
+         [n | ns],
+         [v, d | bs],
+         body
+       ) do
     {%Array.Date64{
        length: n.length,
        null_count: n.null_count,

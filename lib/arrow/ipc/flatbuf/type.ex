@@ -1,8 +1,6 @@
 defmodule Arrow.Ipc.Flatbuf.Type do
   @moduledoc "Generated from FlatBuffers union Arrow.Ipc.Flatbuf.Type. Do not edit."
 
-  alias Arrow.Ipc.Flatbuf.Wire, as: Wire
-
   @type t ::
           nil
           | {:Null, Arrow.Ipc.Flatbuf.Null.t()}
@@ -205,4 +203,222 @@ defmodule Arrow.Ipc.Flatbuf.Type do
   def build_variant(b, :Utf8View, value), do: Arrow.Ipc.Flatbuf.Utf8View.build(b, value)
   def build_variant(b, :ListView, value), do: Arrow.Ipc.Flatbuf.ListView.build(b, value)
   def build_variant(b, :LargeListView, value), do: Arrow.Ipc.Flatbuf.LargeListView.build(b, value)
+
+  # JSON helpers — used by table codegen for the paired `_type` and
+  # value keys flatc emits.
+
+  @doc false
+  # flatc emits the union `_type` key as `"NONE"` (not omitted) when
+  # the discriminator is 0, so match that to keep JSON comparisons
+  # aligned. The value side stays nil and gets dropped by the
+  # caller's `Map.reject`.
+  def __to_json_type__(nil), do: "NONE"
+  def __to_json_type__({variant, _value}), do: Atom.to_string(variant)
+
+  @doc false
+  def __to_json_value__(nil), do: nil
+  def __to_json_value__({:Null, value}), do: Arrow.Ipc.Flatbuf.Null.__to_json_map__(value)
+  def __to_json_value__({:Int, value}), do: Arrow.Ipc.Flatbuf.Int.__to_json_map__(value)
+
+  def __to_json_value__({:FloatingPoint, value}),
+    do: Arrow.Ipc.Flatbuf.FloatingPoint.__to_json_map__(value)
+
+  def __to_json_value__({:Binary, value}), do: Arrow.Ipc.Flatbuf.Binary.__to_json_map__(value)
+  def __to_json_value__({:Utf8, value}), do: Arrow.Ipc.Flatbuf.Utf8.__to_json_map__(value)
+  def __to_json_value__({:Bool, value}), do: Arrow.Ipc.Flatbuf.Bool.__to_json_map__(value)
+  def __to_json_value__({:Decimal, value}), do: Arrow.Ipc.Flatbuf.Decimal.__to_json_map__(value)
+  def __to_json_value__({:Date, value}), do: Arrow.Ipc.Flatbuf.Date.__to_json_map__(value)
+  def __to_json_value__({:Time, value}), do: Arrow.Ipc.Flatbuf.Time.__to_json_map__(value)
+
+  def __to_json_value__({:Timestamp, value}),
+    do: Arrow.Ipc.Flatbuf.Timestamp.__to_json_map__(value)
+
+  def __to_json_value__({:Interval, value}), do: Arrow.Ipc.Flatbuf.Interval.__to_json_map__(value)
+  def __to_json_value__({:List, value}), do: Arrow.Ipc.Flatbuf.List.__to_json_map__(value)
+  def __to_json_value__({:Struct_, value}), do: Arrow.Ipc.Flatbuf.Struct.__to_json_map__(value)
+  def __to_json_value__({:Union, value}), do: Arrow.Ipc.Flatbuf.Union.__to_json_map__(value)
+
+  def __to_json_value__({:FixedSizeBinary, value}),
+    do: Arrow.Ipc.Flatbuf.FixedSizeBinary.__to_json_map__(value)
+
+  def __to_json_value__({:FixedSizeList, value}),
+    do: Arrow.Ipc.Flatbuf.FixedSizeList.__to_json_map__(value)
+
+  def __to_json_value__({:Map, value}), do: Arrow.Ipc.Flatbuf.Map.__to_json_map__(value)
+  def __to_json_value__({:Duration, value}), do: Arrow.Ipc.Flatbuf.Duration.__to_json_map__(value)
+
+  def __to_json_value__({:LargeBinary, value}),
+    do: Arrow.Ipc.Flatbuf.LargeBinary.__to_json_map__(value)
+
+  def __to_json_value__({:LargeUtf8, value}),
+    do: Arrow.Ipc.Flatbuf.LargeUtf8.__to_json_map__(value)
+
+  def __to_json_value__({:LargeList, value}),
+    do: Arrow.Ipc.Flatbuf.LargeList.__to_json_map__(value)
+
+  def __to_json_value__({:RunEndEncoded, value}),
+    do: Arrow.Ipc.Flatbuf.RunEndEncoded.__to_json_map__(value)
+
+  def __to_json_value__({:BinaryView, value}),
+    do: Arrow.Ipc.Flatbuf.BinaryView.__to_json_map__(value)
+
+  def __to_json_value__({:Utf8View, value}), do: Arrow.Ipc.Flatbuf.Utf8View.__to_json_map__(value)
+  def __to_json_value__({:ListView, value}), do: Arrow.Ipc.Flatbuf.ListView.__to_json_map__(value)
+
+  def __to_json_value__({:LargeListView, value}),
+    do: Arrow.Ipc.Flatbuf.LargeListView.__to_json_map__(value)
+
+  @doc false
+  def __from_json__(nil, _value), do: nil
+  def __from_json__("NONE", _value), do: nil
+  def __from_json__("Null", value), do: {:Null, Arrow.Ipc.Flatbuf.Null.__from_json_map__(value)}
+  def __from_json__("Int", value), do: {:Int, Arrow.Ipc.Flatbuf.Int.__from_json_map__(value)}
+
+  def __from_json__("FloatingPoint", value),
+    do: {:FloatingPoint, Arrow.Ipc.Flatbuf.FloatingPoint.__from_json_map__(value)}
+
+  def __from_json__("Binary", value),
+    do: {:Binary, Arrow.Ipc.Flatbuf.Binary.__from_json_map__(value)}
+
+  def __from_json__("Utf8", value), do: {:Utf8, Arrow.Ipc.Flatbuf.Utf8.__from_json_map__(value)}
+  def __from_json__("Bool", value), do: {:Bool, Arrow.Ipc.Flatbuf.Bool.__from_json_map__(value)}
+
+  def __from_json__("Decimal", value),
+    do: {:Decimal, Arrow.Ipc.Flatbuf.Decimal.__from_json_map__(value)}
+
+  def __from_json__("Date", value), do: {:Date, Arrow.Ipc.Flatbuf.Date.__from_json_map__(value)}
+  def __from_json__("Time", value), do: {:Time, Arrow.Ipc.Flatbuf.Time.__from_json_map__(value)}
+
+  def __from_json__("Timestamp", value),
+    do: {:Timestamp, Arrow.Ipc.Flatbuf.Timestamp.__from_json_map__(value)}
+
+  def __from_json__("Interval", value),
+    do: {:Interval, Arrow.Ipc.Flatbuf.Interval.__from_json_map__(value)}
+
+  def __from_json__("List", value), do: {:List, Arrow.Ipc.Flatbuf.List.__from_json_map__(value)}
+
+  def __from_json__("Struct_", value),
+    do: {:Struct_, Arrow.Ipc.Flatbuf.Struct.__from_json_map__(value)}
+
+  def __from_json__("Union", value),
+    do: {:Union, Arrow.Ipc.Flatbuf.Union.__from_json_map__(value)}
+
+  def __from_json__("FixedSizeBinary", value),
+    do: {:FixedSizeBinary, Arrow.Ipc.Flatbuf.FixedSizeBinary.__from_json_map__(value)}
+
+  def __from_json__("FixedSizeList", value),
+    do: {:FixedSizeList, Arrow.Ipc.Flatbuf.FixedSizeList.__from_json_map__(value)}
+
+  def __from_json__("Map", value), do: {:Map, Arrow.Ipc.Flatbuf.Map.__from_json_map__(value)}
+
+  def __from_json__("Duration", value),
+    do: {:Duration, Arrow.Ipc.Flatbuf.Duration.__from_json_map__(value)}
+
+  def __from_json__("LargeBinary", value),
+    do: {:LargeBinary, Arrow.Ipc.Flatbuf.LargeBinary.__from_json_map__(value)}
+
+  def __from_json__("LargeUtf8", value),
+    do: {:LargeUtf8, Arrow.Ipc.Flatbuf.LargeUtf8.__from_json_map__(value)}
+
+  def __from_json__("LargeList", value),
+    do: {:LargeList, Arrow.Ipc.Flatbuf.LargeList.__from_json_map__(value)}
+
+  def __from_json__("RunEndEncoded", value),
+    do: {:RunEndEncoded, Arrow.Ipc.Flatbuf.RunEndEncoded.__from_json_map__(value)}
+
+  def __from_json__("BinaryView", value),
+    do: {:BinaryView, Arrow.Ipc.Flatbuf.BinaryView.__from_json_map__(value)}
+
+  def __from_json__("Utf8View", value),
+    do: {:Utf8View, Arrow.Ipc.Flatbuf.Utf8View.__from_json_map__(value)}
+
+  def __from_json__("ListView", value),
+    do: {:ListView, Arrow.Ipc.Flatbuf.ListView.__from_json_map__(value)}
+
+  def __from_json__("LargeListView", value),
+    do: {:LargeListView, Arrow.Ipc.Flatbuf.LargeListView.__from_json_map__(value)}
+
+  @doc false
+  def __verify_variant__(_buf, 0, _abs_pos, _depth), do: :ok
+
+  def __verify_variant__(buf, 1, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.Null.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 2, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.Int.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 3, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.FloatingPoint.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 4, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.Binary.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 5, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.Utf8.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 6, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.Bool.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 7, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.Decimal.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 8, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.Date.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 9, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.Time.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 10, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.Timestamp.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 11, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.Interval.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 12, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.List.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 13, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.Struct.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 14, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.Union.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 15, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.FixedSizeBinary.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 16, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.FixedSizeList.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 17, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.Map.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 18, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.Duration.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 19, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.LargeBinary.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 20, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.LargeUtf8.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 21, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.LargeList.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 22, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.RunEndEncoded.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 23, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.BinaryView.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 24, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.Utf8View.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 25, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.ListView.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(buf, 26, abs_pos, depth),
+    do: Arrow.Ipc.Flatbuf.LargeListView.__verify_at__(buf, abs_pos, depth)
+
+  def __verify_variant__(_buf, disc, _abs_pos, _depth),
+    do: {:error, {:unknown_union_variant, disc}}
 end

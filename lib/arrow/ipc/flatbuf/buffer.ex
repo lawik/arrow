@@ -25,4 +25,20 @@ defmodule Arrow.Ipc.Flatbuf.Buffer do
     _ = value
     <<Map.get(value, :offset, 0)::little-signed-64, Map.get(value, :length, 0)::little-signed-64>>
   end
+
+  @doc false
+  def __to_json_map__(value) when is_map(value) do
+    %{
+      "offset" => Map.get(value, :offset),
+      "length" => Map.get(value, :length)
+    }
+  end
+
+  @doc false
+  def __from_json_map__(map) when is_map(map) do
+    %__MODULE__{
+      offset: Map.get(map, "offset"),
+      length: Map.get(map, "length")
+    }
+  end
 end

@@ -33,6 +33,32 @@ defmodule Arrow.Ipc.Flatbuf.Int do
     Wire.end_table(b)
   end
 
+  @doc false
+  def __to_json_map__(value) when is_map(value) do
+    Map.new([
+      {"bitWidth", Map.get(value, :bitWidth)},
+      {"is_signed", Map.get(value, :is_signed)}
+    ])
+    |> Map.reject(fn {_k, v} -> v == nil or v == [] end)
+  end
+
+  @doc false
+  def __from_json_map__(map) when is_map(map) do
+    %__MODULE__{
+      bitWidth: Map.get(map, "bitWidth"),
+      is_signed: Map.get(map, "is_signed")
+    }
+  end
+
+  @doc false
+  def __verify_at__(_buf, _pos, 0), do: {:error, :depth_exceeded}
+
+  def __verify_at__(buf, pos, _depth) do
+    with {:ok, _vt_pos, _vt_size, _inline_size} <- Wire.verify_table_header(buf, pos) do
+      :ok
+    end
+  end
+
   @doc "Read field `bitWidth` from a table at position `pos`. Returns the field value or its default."
   def decode_field_bitWidth(buf, pos) do
     case Wire.read_vtable_field(buf, pos, 4) do
