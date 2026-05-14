@@ -187,13 +187,17 @@ defmodule Arrow.LogicalTest do
         ]
       }
 
-      schema_b = put_in(schema_a.fields, [
-        %Arrow.Field{hd(schema_a.fields) | dictionary: %Arrow.Type.DictionaryEncoding{
-          id: 99,
-          index_type: %Arrow.Type.Int{bit_width: 32, signed: true},
-          is_ordered: false
-        }}
-      ])
+      schema_b =
+        put_in(schema_a.fields, [
+          %Arrow.Field{
+            hd(schema_a.fields)
+            | dictionary: %Arrow.Type.DictionaryEncoding{
+                id: 99,
+                index_type: %Arrow.Type.Int{bit_width: 32, signed: true},
+                is_ordered: false
+              }
+          }
+        ])
 
       refute schema_a == schema_b, "test setup: schemas should differ on dict id"
       assert Logical.schemas_equivalent?(schema_a, schema_b)

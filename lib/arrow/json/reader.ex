@@ -166,35 +166,12 @@ defmodule Arrow.Json.Reader do
   defp read_dictionaries(list, %Schema{} = schema) when is_list(list) do
     Map.new(list, fn %{"id" => id, "data" => %{"count" => count, "columns" => [col]}} ->
       field =
-        find_field_by_dict_id(schema, id) ||
+        Field.find_by_dictionary_id(schema, id) ||
           raise(ArgumentError, "dictionary id #{id} has no referencing field")
 
-      # Read the dictionary's values using the field's *value* type
-      # (i.e. ignore the dictionary annotation for this read).
-      value_field = %Field{
-        name: field.name,
-        type: field.type,
-        nullable: field.nullable,
-        children: field.children,
-        metadata: field.metadata
-      }
-
-      {id, read_column(col, value_field, count)}
+      {id, read_column(col, Field.value_field(field), count)}
     end)
   end
-
-  defp find_field_by_dict_id(%Schema{fields: fields}, target), do: walk_for_dict(fields, target)
-
-  defp walk_for_dict(fields, target) when is_list(fields) do
-    Enum.find_value(fields, fn f -> walk_for_dict(f, target) end)
-  end
-
-  defp walk_for_dict(%Field{dictionary: %{id: id}} = f, target) when id == target, do: f
-
-  defp walk_for_dict(%Field{children: children}, target),
-    do: walk_for_dict(children, target)
-
-  defp walk_for_dict(_, _), do: nil
 
   defp read_batch(%{"count" => count, "columns" => cols}, %Schema{fields: fields} = schema) do
     if length(cols) != length(fields) do
@@ -246,14 +223,14 @@ defmodule Arrow.Json.Reader do
   end
 
   ## ----- Int -----
-  defp read_column_by_type(%Type.Int{bit_width: bw, signed: signed}, col, count, _children) do
-    kind = int_kind(bw, signed)
+  defp read_column_by_type(%Type.Int{} = t, col, count, _children) do
+    kind = Type.primitive_kind(t)
     {validity, null_count} = pack_validity_field(col["VALIDITY"], count)
 
     values =
       col |> Map.fetch!("DATA") |> Enum.map(&parse_integer/1) |> Buffer.pack_primitive(kind)
 
-    struct!(array_mod_for_int(bw, signed), %{
+    struct!(Type.primitive_array_mod(t), %{
       length: count,
       null_count: null_count,
       validity: validity,
@@ -262,12 +239,12 @@ defmodule Arrow.Json.Reader do
   end
 
   ## ----- Float -----
-  defp read_column_by_type(%Type.FloatingPoint{precision: prec}, col, count, _children) do
+  defp read_column_by_type(%Type.FloatingPoint{} = t, col, count, _children) do
     {validity, null_count} = pack_validity_field(col["VALIDITY"], count)
-    kind = float_kind(prec)
+    kind = Type.primitive_kind(t)
     values = col |> Map.fetch!("DATA") |> Enum.map(&parse_number/1) |> Buffer.pack_primitive(kind)
 
-    struct!(array_mod_for_float(prec), %{
+    struct!(Type.primitive_array_mod(t), %{
       length: count,
       null_count: null_count,
       validity: validity,
@@ -484,7 +461,7 @@ defmodule Arrow.Json.Reader do
 
   ## ----- Decimal{32,64,128,256} -----
   defp read_column_by_type(
-         %Type.Decimal{bit_width: bw, precision: p, scale: s},
+         %Type.Decimal{bit_width: bw, precision: p, scale: s} = t,
          col,
          count,
          _children
@@ -498,7 +475,7 @@ defmodule Arrow.Json.Reader do
       |> Enum.map(&parse_integer/1)
       |> pack_decimal_values(bw)
 
-    struct!(decimal_array_mod(bw), %{
+    struct!(Type.primitive_array_mod(t), %{
       precision: p,
       scale: s,
       length: count,
@@ -676,36 +653,6 @@ defmodule Arrow.Json.Reader do
   ## ---------------------------------------------------------------------
   ## Numeric / type tag helpers
   ## ---------------------------------------------------------------------
-
-  defp int_kind(8, true), do: :int8
-  defp int_kind(16, true), do: :int16
-  defp int_kind(32, true), do: :int32
-  defp int_kind(64, true), do: :int64
-  defp int_kind(8, false), do: :uint8
-  defp int_kind(16, false), do: :uint16
-  defp int_kind(32, false), do: :uint32
-  defp int_kind(64, false), do: :uint64
-
-  defp float_kind(:half), do: :float32
-  defp float_kind(:single), do: :float32
-  defp float_kind(:double), do: :float64
-
-  defp array_mod_for_int(8, true), do: Array.Int8
-  defp array_mod_for_int(16, true), do: Array.Int16
-  defp array_mod_for_int(32, true), do: Array.Int32
-  defp array_mod_for_int(64, true), do: Array.Int64
-  defp array_mod_for_int(8, false), do: Array.UInt8
-  defp array_mod_for_int(16, false), do: Array.UInt16
-  defp array_mod_for_int(32, false), do: Array.UInt32
-  defp array_mod_for_int(64, false), do: Array.UInt64
-
-  defp array_mod_for_float(:single), do: Array.Float32
-  defp array_mod_for_float(:double), do: Array.Float64
-
-  defp decimal_array_mod(32), do: Array.Decimal32
-  defp decimal_array_mod(64), do: Array.Decimal64
-  defp decimal_array_mod(128), do: Array.Decimal128
-  defp decimal_array_mod(256), do: Array.Decimal256
 
   defp pack_decimal_values(values, 32),
     do: Enum.reduce(values, <<>>, fn v, acc -> <<acc::binary, v::little-signed-32>> end)

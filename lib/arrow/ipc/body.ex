@@ -366,7 +366,7 @@ defmodule Arrow.Ipc.Body do
   end
 
   defp decode_array(%Field{type: %Arrow.Type.Int{} = t}, [n | ns], [v, d | bs], body) do
-    {struct!(primitive_array_mod(t), %{
+    {struct!(Arrow.Type.primitive_array_mod(t), %{
        length: n.length,
        null_count: n.null_count,
        validity: take_validity(body, v, n.length, n.null_count),
@@ -375,7 +375,7 @@ defmodule Arrow.Ipc.Body do
   end
 
   defp decode_array(%Field{type: %Arrow.Type.FloatingPoint{} = t}, [n | ns], [v, d | bs], body) do
-    {struct!(primitive_array_mod(t), %{
+    {struct!(Arrow.Type.primitive_array_mod(t), %{
        length: n.length,
        null_count: n.null_count,
        validity: take_validity(body, v, n.length, n.null_count),
@@ -479,13 +479,13 @@ defmodule Arrow.Ipc.Body do
   end
 
   defp decode_array(
-         %Field{type: %Arrow.Type.Decimal{bit_width: bw, precision: p, scale: s}},
+         %Field{type: %Arrow.Type.Decimal{bit_width: bw, precision: p, scale: s} = t},
          [n | ns],
          [v, d | bs],
          body
        )
        when bw in [32, 64, 128, 256] do
-    {struct!(decimal_array_mod(bw), %{
+    {struct!(Arrow.Type.primitive_array_mod(t), %{
        precision: p,
        scale: s,
        length: n.length,
@@ -646,27 +646,6 @@ defmodule Arrow.Ipc.Body do
   ## ---------------------------------------------------------------------
   ## Decode helpers
   ## ---------------------------------------------------------------------
-
-  defp primitive_array_mod(%Arrow.Type.Int{bit_width: bw, signed: signed}) do
-    case {bw, signed} do
-      {8, true} -> Array.Int8
-      {16, true} -> Array.Int16
-      {32, true} -> Array.Int32
-      {64, true} -> Array.Int64
-      {8, false} -> Array.UInt8
-      {16, false} -> Array.UInt16
-      {32, false} -> Array.UInt32
-      {64, false} -> Array.UInt64
-    end
-  end
-
-  defp primitive_array_mod(%Arrow.Type.FloatingPoint{precision: :single}), do: Array.Float32
-  defp primitive_array_mod(%Arrow.Type.FloatingPoint{precision: :double}), do: Array.Float64
-
-  defp decimal_array_mod(32), do: Array.Decimal32
-  defp decimal_array_mod(64), do: Array.Decimal64
-  defp decimal_array_mod(128), do: Array.Decimal128
-  defp decimal_array_mod(256), do: Array.Decimal256
 
   defp take_validity(_body, _b, _row_count, 0), do: nil
 

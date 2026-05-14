@@ -25,19 +25,15 @@ defmodule Arrow.FixturesTest do
 
   @fixtures_root Path.expand("../../priv/arrow-testing", __DIR__)
 
-  @fixture_paths (if File.dir?(@fixtures_root) do
-                    Path.wildcard(
-                      Path.join(@fixtures_root, "data/arrow-ipc-stream/integration/**/*.json.gz")
-                    ) ++
-                      Path.wildcard(
-                        Path.join(
-                          @fixtures_root,
-                          "data/arrow-ipc-stream/integration/**/*.json_integration"
-                        )
-                      )
-                  else
-                    []
-                  end)
+  @fixture_paths Path.wildcard(
+                   Path.join(@fixtures_root, "data/arrow-ipc-stream/integration/**/*.json.gz")
+                 ) ++
+                   Path.wildcard(
+                     Path.join(
+                       @fixtures_root,
+                       "data/arrow-ipc-stream/integration/**/*.json_integration"
+                     )
+                   )
 
   if @fixture_paths == [] do
     test "no arrow-testing fixtures present" do

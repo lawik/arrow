@@ -37,39 +37,18 @@ defmodule Arrow.Json.Writer do
   defp write_dictionaries(dicts, %Schema{} = schema) do
     Enum.map(dicts, fn {id, array} ->
       field =
-        find_field_by_dict_id(schema, id) ||
+        Field.find_by_dictionary_id(schema, id) ||
           raise(ArgumentError, "dictionary id #{id} has no referencing field")
-
-      value_field = %Field{
-        name: field.name,
-        type: field.type,
-        nullable: field.nullable,
-        children: field.children,
-        metadata: field.metadata
-      }
 
       %{
         "id" => id,
         "data" => %{
           "count" => array_count(array),
-          "columns" => [write_column(value_field, array)]
+          "columns" => [write_column(Field.value_field(field), array)]
         }
       }
     end)
   end
-
-  defp find_field_by_dict_id(%Schema{fields: fields}, target), do: walk_for_dict(fields, target)
-
-  defp walk_for_dict(fields, target) when is_list(fields) do
-    Enum.find_value(fields, fn f -> walk_for_dict(f, target) end)
-  end
-
-  defp walk_for_dict(%Field{dictionary: %{id: id}} = f, target) when id == target, do: f
-
-  defp walk_for_dict(%Field{children: children}, target),
-    do: walk_for_dict(children, target)
-
-  defp walk_for_dict(_, _), do: nil
 
   ## ---------------------------------------------------------------------
   ## Schema
@@ -229,9 +208,8 @@ defmodule Arrow.Json.Writer do
   end
 
   ## ----- Int -----
-  defp write_column_body(base, %Field{type: %Type.Int{bit_width: bw, signed: signed}}, array) do
-    kind = int_kind(bw, signed)
-    values = Buffer.unpack_primitive(array.values, kind, array.length)
+  defp write_column_body(base, %Field{type: %Type.Int{bit_width: bw} = t}, array) do
+    values = Buffer.unpack_primitive(array.values, Type.primitive_kind(t), array.length)
 
     base
     |> Map.put("VALIDITY", validity_list(array.validity, array.length))
@@ -239,8 +217,8 @@ defmodule Arrow.Json.Writer do
   end
 
   ## ----- Float -----
-  defp write_column_body(base, %Field{type: %Type.FloatingPoint{precision: p}}, array) do
-    values = Buffer.unpack_primitive(array.values, float_kind(p), array.length)
+  defp write_column_body(base, %Field{type: %Type.FloatingPoint{} = t}, array) do
+    values = Buffer.unpack_primitive(array.values, Type.primitive_kind(t), array.length)
 
     base
     |> Map.put("VALIDITY", validity_list(array.validity, array.length))
@@ -537,19 +515,6 @@ defmodule Arrow.Json.Writer do
 
   defp validity_list(nil, length), do: List.duplicate(1, length)
   defp validity_list(bitmap, length), do: Buffer.unpack_validity(bitmap, length)
-
-  defp int_kind(8, true), do: :int8
-  defp int_kind(16, true), do: :int16
-  defp int_kind(32, true), do: :int32
-  defp int_kind(64, true), do: :int64
-  defp int_kind(8, false), do: :uint8
-  defp int_kind(16, false), do: :uint16
-  defp int_kind(32, false), do: :uint32
-  defp int_kind(64, false), do: :uint64
-
-  defp float_kind(:single), do: :float32
-  defp float_kind(:double), do: :float64
-  defp float_kind(:half), do: :float32
 
   defp maybe_stringify_int(values, 64), do: Enum.map(values, &Integer.to_string/1)
   defp maybe_stringify_int(values, _bw), do: values

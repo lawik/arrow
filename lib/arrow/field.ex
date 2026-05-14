@@ -29,4 +29,30 @@ defmodule Arrow.Field do
           metadata: metadata(),
           dictionary: Arrow.Type.DictionaryEncoding.t() | nil
         }
+
+  @doc """
+  Returns the field with its `dictionary` annotation stripped — i.e. a
+  field that describes the *value* type only. Used when decoding the
+  contents of a `DictionaryBatch`, where the buffers carry the dictionary
+  values rather than indices.
+  """
+  @spec value_field(t()) :: t()
+  def value_field(%__MODULE__{} = f), do: %__MODULE__{f | dictionary: nil}
+
+  @doc """
+  Walks the field tree under `schema_or_fields` and returns the first
+  field whose dictionary annotation has the given id, or `nil`.
+  """
+  @spec find_by_dictionary_id(Arrow.Schema.t() | [t()], non_neg_integer()) :: t() | nil
+  def find_by_dictionary_id(%Arrow.Schema{fields: fields}, target),
+    do: find_by_dictionary_id(fields, target)
+
+  def find_by_dictionary_id(fields, target) when is_list(fields) do
+    Enum.find_value(fields, fn f -> walk_for_dict(f, target) end)
+  end
+
+  defp walk_for_dict(%__MODULE__{dictionary: %{id: id}} = f, target) when id == target, do: f
+
+  defp walk_for_dict(%__MODULE__{children: children}, target),
+    do: find_by_dictionary_id(children, target)
 end

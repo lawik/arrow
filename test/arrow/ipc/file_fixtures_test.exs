@@ -24,15 +24,11 @@ defmodule Arrow.Ipc.FileFixturesTest do
   # stream_fixtures_test.exs for the reasoning per file.
   @upstream_divergent ["generated_map_non_canonical.arrow_file"]
 
-  @paths (if @fixture_dirs == [] do
-            []
-          else
-            @fixture_dirs
-            |> Enum.flat_map(&Path.wildcard(Path.join(&1, "*.arrow_file")))
-            |> Enum.reject(fn p ->
-              Enum.any?(@upstream_divergent, &String.ends_with?(p, &1))
-            end)
-          end)
+  @paths @fixture_dirs
+         |> Enum.flat_map(&Path.wildcard(Path.join(&1, "*.arrow_file")))
+         |> Enum.reject(fn p ->
+           Enum.any?(@upstream_divergent, &String.ends_with?(p, &1))
+         end)
 
   if @paths == [] do
     test "no arrow-testing file fixtures present" do

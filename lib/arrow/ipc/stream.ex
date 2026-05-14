@@ -144,7 +144,7 @@ defmodule Arrow.Ipc.Stream do
   End-of-stream marker: continuation marker followed by a zero length.
   """
   @spec eos() :: binary()
-  def eos, do: <<@continuation::little-32, 0::little-signed-32>>
+  def eos(), do: <<@continuation::little-32, 0::little-signed-32>>
 
   defp encode_schema_message(%Arrow.Schema{} = schema) do
     {iodata, _meta_len} = schema_message_frame(schema)
@@ -163,29 +163,13 @@ defmodule Arrow.Ipc.Stream do
     dictionaries
     |> Enum.sort_by(&elem(&1, 0))
     |> Enum.map(fn {id, array} ->
-      field =
-        find_field_by_dict_id(schema, id) ||
-          raise(ArgumentError, "dictionary id #{id} has no referencing field in schema")
+      Arrow.Field.find_by_dictionary_id(schema, id) ||
+        raise(ArgumentError, "dictionary id #{id} has no referencing field in schema")
 
-      _ = field
       {iodata, _meta_len, _body_len} = dictionary_batch_message_frame(id, array)
       iodata
     end)
   end
-
-  defp find_field_by_dict_id(%Arrow.Schema{fields: fields}, target),
-    do: walk_for_dict(fields, target)
-
-  defp walk_for_dict(fields, target) when is_list(fields) do
-    Enum.find_value(fields, fn f -> walk_for_dict(f, target) end)
-  end
-
-  defp walk_for_dict(%Arrow.Field{dictionary: %{id: id}} = f, target) when id == target, do: f
-
-  defp walk_for_dict(%Arrow.Field{children: children}, target),
-    do: walk_for_dict(children, target)
-
-  defp walk_for_dict(_, _), do: nil
 
   defp build_message_metadata(header, body_length) do
     builder = Wire.new_builder()
@@ -267,64 +251,44 @@ defmodule Arrow.Ipc.Stream do
   end
 
   defp dispatch_message(fb_message, body, rest, schema, dicts, batches) do
-    case fb_message.header do
-      {:Schema, fb_schema} ->
-        new_schema = Metadata.schema_from_fb_struct(fb_schema)
-        do_decode(rest, new_schema, dicts, batches)
-
-      {:RecordBatch, fb_rb} ->
-        if schema == nil do
-          raise ArgumentError, "RecordBatch message before Schema"
-        end
-
-        nodes = Enum.map(fb_rb.nodes, fn n -> %{length: n.length, null_count: n.null_count} end)
-        buffers = Enum.map(fb_rb.buffers, fn b -> %{offset: b.offset, length: b.length} end)
-        batch = Body.decode(schema, fb_rb.length, nodes, buffers, body)
-        do_decode(rest, schema, dicts, [batch | batches])
-
-      {:DictionaryBatch, fb_db} ->
-        if schema == nil do
-          raise ArgumentError, "DictionaryBatch message before Schema"
-        end
-
-        if fb_db.isDelta do
-          raise ArgumentError, "delta DictionaryBatch is not yet supported"
-        end
-
-        field =
-          find_field_by_dict_id(schema, fb_db.id) ||
-            raise(ArgumentError, "DictionaryBatch references unknown id #{fb_db.id}")
-
-        # Build a single-field schema-less decode: the dictionary
-        # values are decoded as the field's *value* type (we strip the
-        # dictionary annotation so we don't recurse into it).
-        value_field = %Arrow.Field{
-          name: field.name,
-          type: field.type,
-          nullable: field.nullable,
-          children: field.children,
-          metadata: field.metadata
-        }
-
-        nodes =
-          Enum.map(fb_db.data.nodes, fn n -> %{length: n.length, null_count: n.null_count} end)
-
-        buffers =
-          Enum.map(fb_db.data.buffers, fn b -> %{offset: b.offset, length: b.length} end)
-
-        array = Body.decode_array_buffers(value_field, nodes, buffers, body)
-        do_decode(rest, schema, Map.put(dicts, fb_db.id, array), batches)
-
-      {:Tensor, _} ->
-        raise ArgumentError, "Tensor messages are out of scope for the stream reader"
-
-      {:SparseTensor, _} ->
-        raise ArgumentError, "SparseTensor messages are out of scope for the stream reader"
-
-      other ->
-        raise ArgumentError, "unexpected Message header variant: #{inspect(other)}"
-    end
+    handle_header(fb_message.header, body, rest, schema, dicts, batches)
   end
+
+  defp handle_header({:Schema, fb_schema}, _body, rest, _schema, dicts, batches) do
+    do_decode(rest, Metadata.schema_from_fb_struct(fb_schema), dicts, batches)
+  end
+
+  defp handle_header({:RecordBatch, fb_rb}, body, rest, schema, dicts, batches) do
+    if schema == nil, do: raise(ArgumentError, "RecordBatch message before Schema")
+
+    nodes = Enum.map(fb_rb.nodes, fn n -> %{length: n.length, null_count: n.null_count} end)
+    buffers = Enum.map(fb_rb.buffers, fn b -> %{offset: b.offset, length: b.length} end)
+    batch = Body.decode(schema, fb_rb.length, nodes, buffers, body)
+    do_decode(rest, schema, dicts, [batch | batches])
+  end
+
+  defp handle_header({:DictionaryBatch, fb_db}, body, rest, schema, dicts, batches) do
+    if schema == nil, do: raise(ArgumentError, "DictionaryBatch message before Schema")
+    if fb_db.isDelta, do: raise(ArgumentError, "delta DictionaryBatch is not yet supported")
+
+    field =
+      Arrow.Field.find_by_dictionary_id(schema, fb_db.id) ||
+        raise(ArgumentError, "DictionaryBatch references unknown id #{fb_db.id}")
+
+    nodes = Enum.map(fb_db.data.nodes, fn n -> %{length: n.length, null_count: n.null_count} end)
+    buffers = Enum.map(fb_db.data.buffers, fn b -> %{offset: b.offset, length: b.length} end)
+    array = Body.decode_array_buffers(Arrow.Field.value_field(field), nodes, buffers, body)
+    do_decode(rest, schema, Map.put(dicts, fb_db.id, array), batches)
+  end
+
+  defp handle_header({:Tensor, _}, _body, _rest, _schema, _dicts, _batches),
+    do: raise(ArgumentError, "Tensor messages are out of scope for the stream reader")
+
+  defp handle_header({:SparseTensor, _}, _body, _rest, _schema, _dicts, _batches),
+    do: raise(ArgumentError, "SparseTensor messages are out of scope for the stream reader")
+
+  defp handle_header(other, _body, _rest, _schema, _dicts, _batches),
+    do: raise(ArgumentError, "unexpected Message header variant: #{inspect(other)}")
 
   defp decode_message_metadata(binary) do
     pos = Wire.root_table_pos(binary)

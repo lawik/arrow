@@ -35,30 +35,25 @@ defmodule Mix.Tasks.Arrow.Integration.Validate do
       |> File.read!()
       |> IpcFile.decode()
 
+    if Arrow.Logical.payloads_equivalent?(from_json, from_arrow) do
+      Mix.shell().info("ok: #{json_path} ↔ #{arrow_path}")
+    else
+      Mix.raise(diff_message(from_json, from_arrow, json_path, arrow_path))
+    end
+  end
+
+  defp diff_message(from_json, from_arrow, json_path, arrow_path) do
     cond do
-      from_json.schema != from_arrow.schema ->
-        Mix.raise("schema mismatch between #{json_path} and #{arrow_path}")
+      not Arrow.Logical.schemas_equivalent?(from_json.schema, from_arrow.schema) ->
+        "schema mismatch between #{json_path} and #{arrow_path}"
 
       length(from_json.batches) != length(from_arrow.batches) ->
-        Mix.raise(
-          "batch count mismatch: json has #{length(from_json.batches)}, " <>
-            "arrow has #{length(from_arrow.batches)}"
-        )
+        "batch count mismatch: json has #{length(from_json.batches)}, " <>
+          "arrow has #{length(from_arrow.batches)}"
 
       true ->
-        from_json.batches
-        |> Enum.zip(from_arrow.batches)
-        |> Enum.with_index()
-        |> Enum.each(fn {{a, b}, i} ->
-          unless Arrow.Logical.batches_equal?(a, b) do
-            Mix.raise(
-              "batch #{i} diverged between #{json_path} and #{arrow_path}"
-            )
-          end
-        end)
+        "data mismatch between #{json_path} and #{arrow_path}"
     end
-
-    Mix.shell().info("ok: #{json_path} ↔ #{arrow_path}")
   end
 
   defp maybe_gunzip(<<0x1F, 0x8B, _::binary>> = bin), do: :zlib.gunzip(bin)

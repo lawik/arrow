@@ -35,15 +35,11 @@ defmodule Arrow.Ipc.StreamFixturesTest do
     "generated_map_non_canonical.stream"
   ]
 
-  @stream_paths (if @fixture_dirs == [] do
-                   []
-                 else
-                   @fixture_dirs
-                   |> Enum.flat_map(&Path.wildcard(Path.join(&1, "*.stream")))
-                   |> Enum.reject(fn p ->
-                     Enum.any?(@upstream_divergent, &String.ends_with?(p, &1))
-                   end)
-                 end)
+  @stream_paths @fixture_dirs
+                |> Enum.flat_map(&Path.wildcard(Path.join(&1, "*.stream")))
+                |> Enum.reject(fn p ->
+                  Enum.any?(@upstream_divergent, &String.ends_with?(p, &1))
+                end)
 
   if @stream_paths == [] do
     test "no arrow-testing fixtures present" do

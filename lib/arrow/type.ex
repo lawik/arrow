@@ -235,11 +235,11 @@ defmodule Arrow.Type do
     FixedSizeList,
     FloatingPoint,
     Int,
-    List,
     Interval,
     LargeBinary,
     LargeList,
     LargeUtf8,
+    List,
     Map,
     Null,
     Struct,
@@ -283,4 +283,43 @@ defmodule Arrow.Type do
   def bit_width(%Time{bit_width: w}), do: w
   def bit_width(%Duration{}), do: 64
   def bit_width(%Decimal{bit_width: w}), do: w
+
+  @doc """
+  Returns the `Arrow.Array.*` struct module that stores values of `type`.
+  Covers Int / FloatingPoint / Decimal — the types where the concrete
+  Array module is selected by a numeric parameter on the Type. Other
+  types have a 1:1 mapping and don't need a resolver.
+  """
+  @spec primitive_array_mod(t()) :: module()
+  def primitive_array_mod(%Int{bit_width: 8, signed: true}), do: Arrow.Array.Int8
+  def primitive_array_mod(%Int{bit_width: 16, signed: true}), do: Arrow.Array.Int16
+  def primitive_array_mod(%Int{bit_width: 32, signed: true}), do: Arrow.Array.Int32
+  def primitive_array_mod(%Int{bit_width: 64, signed: true}), do: Arrow.Array.Int64
+  def primitive_array_mod(%Int{bit_width: 8, signed: false}), do: Arrow.Array.UInt8
+  def primitive_array_mod(%Int{bit_width: 16, signed: false}), do: Arrow.Array.UInt16
+  def primitive_array_mod(%Int{bit_width: 32, signed: false}), do: Arrow.Array.UInt32
+  def primitive_array_mod(%Int{bit_width: 64, signed: false}), do: Arrow.Array.UInt64
+  def primitive_array_mod(%FloatingPoint{precision: :single}), do: Arrow.Array.Float32
+  def primitive_array_mod(%FloatingPoint{precision: :double}), do: Arrow.Array.Float64
+  def primitive_array_mod(%Decimal{bit_width: 32}), do: Arrow.Array.Decimal32
+  def primitive_array_mod(%Decimal{bit_width: 64}), do: Arrow.Array.Decimal64
+  def primitive_array_mod(%Decimal{bit_width: 128}), do: Arrow.Array.Decimal128
+  def primitive_array_mod(%Decimal{bit_width: 256}), do: Arrow.Array.Decimal256
+
+  @doc """
+  Returns the `Arrow.Buffer.primitive_kind/0` atom for the primitive
+  type's values buffer.
+  """
+  @spec primitive_kind(t()) :: Arrow.Buffer.primitive_kind()
+  def primitive_kind(%Int{bit_width: 8, signed: true}), do: :int8
+  def primitive_kind(%Int{bit_width: 16, signed: true}), do: :int16
+  def primitive_kind(%Int{bit_width: 32, signed: true}), do: :int32
+  def primitive_kind(%Int{bit_width: 64, signed: true}), do: :int64
+  def primitive_kind(%Int{bit_width: 8, signed: false}), do: :uint8
+  def primitive_kind(%Int{bit_width: 16, signed: false}), do: :uint16
+  def primitive_kind(%Int{bit_width: 32, signed: false}), do: :uint32
+  def primitive_kind(%Int{bit_width: 64, signed: false}), do: :uint64
+  def primitive_kind(%FloatingPoint{precision: :half}), do: :float32
+  def primitive_kind(%FloatingPoint{precision: :single}), do: :float32
+  def primitive_kind(%FloatingPoint{precision: :double}), do: :float64
 end

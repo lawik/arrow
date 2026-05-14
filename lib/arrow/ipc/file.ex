@@ -170,7 +170,7 @@ defmodule Arrow.Ipc.File do
     schema = Metadata.schema_from_fb_struct(fb_footer.schema)
 
     dictionaries =
-      (fb_footer.dictionaries || [])
+      fb_footer.dictionaries
       |> Enum.reject(&is_nil/1)
       |> Enum.reduce(%{}, fn block, acc ->
         {id, array} = decode_dictionary_block(binary, block, schema)
@@ -209,16 +209,8 @@ defmodule Arrow.Ipc.File do
         end
 
         field =
-          find_field_by_dict_id(schema, fb_db.id) ||
+          Arrow.Field.find_by_dictionary_id(schema, fb_db.id) ||
             raise(ArgumentError, "DictionaryBatch references unknown id #{fb_db.id}")
-
-        value_field = %Arrow.Field{
-          name: field.name,
-          type: field.type,
-          nullable: field.nullable,
-          children: field.children,
-          metadata: field.metadata
-        }
 
         nodes =
           Enum.map(fb_db.data.nodes, fn n -> %{length: n.length, null_count: n.null_count} end)
@@ -226,7 +218,7 @@ defmodule Arrow.Ipc.File do
         buffers =
           Enum.map(fb_db.data.buffers, fn b -> %{offset: b.offset, length: b.length} end)
 
-        array = Body.decode_array_buffers(value_field, nodes, buffers, body)
+        array = Body.decode_array_buffers(Arrow.Field.value_field(field), nodes, buffers, body)
         {fb_db.id, array}
 
       other ->
@@ -240,24 +232,10 @@ defmodule Arrow.Ipc.File do
     body_len = block.bodyLength
     meta_bytes_len = meta_len_with_prefix - 8
 
-    <<_::binary-size(off + 8), metadata::binary-size(meta_bytes_len),
-      body::binary-size(body_len), _rest::binary>> = binary
+    <<_::binary-size(off + 8), metadata::binary-size(meta_bytes_len), body::binary-size(body_len),
+      _rest::binary>> = binary
 
     fb_message = Flatbuf.Message.decode_at(metadata, Wire.root_table_pos(metadata))
     {fb_message, body}
   end
-
-  defp find_field_by_dict_id(%Arrow.Schema{fields: fields}, target),
-    do: walk_for_dict(fields, target)
-
-  defp walk_for_dict(fields, target) when is_list(fields) do
-    Enum.find_value(fields, fn f -> walk_for_dict(f, target) end)
-  end
-
-  defp walk_for_dict(%Arrow.Field{dictionary: %{id: id}} = f, target) when id == target, do: f
-
-  defp walk_for_dict(%Arrow.Field{children: children}, target),
-    do: walk_for_dict(children, target)
-
-  defp walk_for_dict(_, _), do: nil
 end

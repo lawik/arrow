@@ -220,8 +220,16 @@ defmodule Arrow.Logical do
   same data with different dictionary IDs compare equal.
   """
   @spec payloads_equivalent?(
-          %{schema: Arrow.Schema.t(), dictionaries: dictionaries(), batches: [Arrow.RecordBatch.t()]},
-          %{schema: Arrow.Schema.t(), dictionaries: dictionaries(), batches: [Arrow.RecordBatch.t()]}
+          %{
+            schema: Arrow.Schema.t(),
+            dictionaries: dictionaries(),
+            batches: [Arrow.RecordBatch.t()]
+          },
+          %{
+            schema: Arrow.Schema.t(),
+            dictionaries: dictionaries(),
+            batches: [Arrow.RecordBatch.t()]
+          }
         ) :: boolean()
   def payloads_equivalent?(
         %{schema: sa, dictionaries: da, batches: ba},
