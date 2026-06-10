@@ -35,7 +35,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up BEAM
         id: beam
@@ -45,7 +45,7 @@ jobs:
           otp-version: ${{ env.OTP_VERSION }}
 
       - name: Cache deps and build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             deps
@@ -67,7 +67,7 @@ jobs:
     # fixture tiers excluded by default.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up BEAM
         id: beam
@@ -77,7 +77,7 @@ jobs:
           otp-version: ${{ env.OTP_VERSION }}
 
       - name: Cache deps and build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             deps
@@ -92,7 +92,7 @@ jobs:
   conformance:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up BEAM
         id: beam
@@ -102,7 +102,7 @@ jobs:
           otp-version: ${{ env.OTP_VERSION }}
 
       - name: Cache deps and build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             deps
@@ -112,7 +112,7 @@ jobs:
             test-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-
 
       - name: Cache arrow-testing corpus
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: priv/arrow-testing
           key: arrow-testing-${{ env.ARROW_TESTING_REVISION }}
@@ -128,7 +128,7 @@ jobs:
   dialyzer:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up BEAM
         id: beam
@@ -138,7 +138,7 @@ jobs:
           otp-version: ${{ env.OTP_VERSION }}
 
       - name: Cache deps and build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             deps
@@ -151,7 +151,7 @@ jobs:
       # the BEAM versions + lockfile so PLT construction (the slow part)
       # only reruns when those change.
       - name: Cache PLTs
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: _build/dev/*.plt*
           key: plt-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-${{ hashFiles('mix.lock') }}
@@ -167,7 +167,7 @@ jobs:
     # compiles dev (including the flatbuf git dep).
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up BEAM
         id: beam
@@ -177,7 +177,7 @@ jobs:
           otp-version: ${{ env.OTP_VERSION }}
 
       - name: Cache deps and build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             deps
@@ -187,7 +187,7 @@ jobs:
             archery-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-
 
       - name: Cache arrow-testing corpus
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: priv/arrow-testing
           key: arrow-testing-${{ env.ARROW_TESTING_REVISION }}
@@ -199,12 +199,12 @@ jobs:
         run: MIX_ENV=test mix arrow.testing.fixtures
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - name: Check out apache/arrow (dev/archery only)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: apache/arrow
           ref: ${{ env.ARROW_UPSTREAM_REVISION }}
