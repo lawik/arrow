@@ -42,14 +42,16 @@ defmodule Arrow.MixProject do
 
   def aliases do
     [
+      # spellweaver.check halts the VM even on success, so it must run
+      # last or every step after it is silently skipped.
       check: [
         "hex.audit",
         "compile --warnings-as-errors --force",
         "format --check-formatted",
         "credo",
         "deps.unlock --check-unused",
-        "spellweaver.check",
-        "dialyzer"
+        "dialyzer",
+        "spellweaver.check"
       ],
       precommit: [
         "hex.audit",
@@ -57,9 +59,9 @@ defmodule Arrow.MixProject do
         "format",
         "credo",
         "deps.unlock --unused",
-        "spellweaver.check",
         "dialyzer",
-        "test"
+        "test",
+        "spellweaver.check"
       ]
     ]
   end
