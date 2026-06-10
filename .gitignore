@@ -25,3 +25,6 @@ arrow-*.tar
 # Cross-language integration fixtures, pulled by `mix arrow.testing.fixtures`.
 /priv/arrow-testing/
 
+
+# Local working documents.
+/REVIEW.md
