@@ -10,9 +10,24 @@ defmodule Arrow.Json do
 
   The reader is in `Arrow.Json.Reader`; the writer in `Arrow.Json.Writer`. This
   module exposes thin shortcuts that round-trip via `Jason`.
+
+  ## Errors
+
+  `decode/1` returns `{:ok, payload}` or `{:error, %Arrow.DecodeError{}}`
+  with kind `:unsupported` (the input uses a feature this library
+  deliberately rejects) or `:malformed` (the input is corrupt, truncated,
+  or internally inconsistent — including invalid gzip or JSON).
+  `decode!/1` raises the same error.
   """
 
   alias Arrow.Json.{Reader, Writer}
+
+  @typedoc "Everything a decoded document carries: schema, dictionary registry, batches."
+  @type payload :: %{
+          schema: Arrow.Schema.t(),
+          dictionaries: %{optional(non_neg_integer()) => Arrow.Array.t()},
+          batches: [Arrow.RecordBatch.t()]
+        }
 
   @doc """
   Reads a JSON document (or in-memory map) into a schema, dictionaries
@@ -22,27 +37,39 @@ defmodule Arrow.Json do
   detected via the gzip magic bytes and decompressed transparently;
   the magic can never start a valid JSON document.
   """
-  @spec decode(binary() | map()) ::
-          {:ok,
-           %{
-             schema: Arrow.Schema.t(),
-             dictionaries: %{optional(non_neg_integer()) => Arrow.Array.t()},
-             batches: [Arrow.RecordBatch.t()]
-           }}
-          | {:error, term()}
+  @spec decode(binary() | map()) :: {:ok, payload()} | {:error, Arrow.DecodeError.t()}
   def decode(<<0x1F, 0x8B, _::binary>> = gzipped) do
     decode(:zlib.gunzip(gzipped))
   rescue
-    e in ErlangError -> {:error, e}
+    e in ErlangError ->
+      {:error,
+       %Arrow.DecodeError{kind: :malformed, message: "invalid gzip: " <> Exception.message(e)}}
   end
 
   def decode(json) when is_binary(json) do
-    with {:ok, decoded} <- Jason.decode(json) do
-      decode(decoded)
+    case Jason.decode(json) do
+      {:ok, decoded} ->
+        decode(decoded)
+
+      {:error, %Jason.DecodeError{} = e} ->
+        {:error,
+         %Arrow.DecodeError{kind: :malformed, message: "invalid JSON: " <> Exception.message(e)}}
     end
   end
 
   def decode(%{} = map), do: Reader.read(map)
+
+  @doc """
+  Like `decode/1`, but returns the payload directly and raises
+  `Arrow.DecodeError` on failure.
+  """
+  @spec decode!(binary() | map()) :: payload()
+  def decode!(input) do
+    case decode(input) do
+      {:ok, payload} -> payload
+      {:error, %Arrow.DecodeError{} = e} -> raise e
+    end
+  end
 
   @doc """
   Encodes a schema plus record batches (and optional dictionaries

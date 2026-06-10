@@ -13,11 +13,11 @@ defmodule Arrow.FixturesTest do
   so the harness transparently inflates `.json.gz` files.
 
   Fixtures using types the library deliberately rejects (Union,
-  BinaryView/Utf8View, ListView, RunEndEncoded, ...) raise `ArgumentError`
-  with an "unsupported" message inside the reader; those are soft skips so
-  the suite signals *coverage* rather than failure. Any other decode error
-  flunks. When `--include fixtures` is given but the corpus is absent, the
-  placeholder test flunks rather than passing green.
+  BinaryView/Utf8View, ListView, RunEndEncoded, ...) decode to
+  `{:error, %Arrow.DecodeError{kind: :unsupported}}`; those are soft skips
+  so the suite signals *coverage* rather than failure. Any other decode
+  error flunks. When `--include fixtures` is given but the corpus is
+  absent, the placeholder test flunks rather than passing green.
   """
 
   use ExUnit.Case, async: true
@@ -55,15 +55,12 @@ defmodule Arrow.FixturesTest do
             assert redecoded.batches == batches
             assert redecoded.dictionaries == dicts
 
-          {:error, %ArgumentError{message: msg}} ->
-            if unsupported?(msg) do
-              IO.puts(:stderr, "  ⚠ unsupported in #{unquote(name)}: #{msg}")
-            else
-              flunk("decode failed for #{unquote(name)}: #{msg}")
-            end
+          {:error, %Arrow.DecodeError{kind: :unsupported, message: msg}} ->
+            IO.puts(:stderr, "  ⚠ unsupported in #{unquote(name)}: #{msg}")
 
+          # :malformed DecodeErrors and anything else are genuine failures.
           {:error, other} ->
-            flunk("decode error for #{unquote(name)}: #{inspect(other)}")
+            flunk("decode failed for #{unquote(name)}: #{inspect(other)}")
         end
       end
     end
@@ -71,14 +68,6 @@ defmodule Arrow.FixturesTest do
     defp read_fixture(path) do
       bin = File.read!(path)
       if String.ends_with?(path, ".gz"), do: :zlib.gunzip(bin), else: bin
-    end
-
-    # The readers raise ArgumentError both for unimplemented types and for
-    # genuine validation failures; only the former are soft skips. The
-    # unimplemented-type messages all say "unsupported" / "not yet
-    # supported" (see lib/arrow/json/reader.ex, lib/arrow/ipc/metadata.ex).
-    defp unsupported?(msg) do
-      msg =~ "unsupported" or msg =~ "not yet supported"
     end
   end
 end

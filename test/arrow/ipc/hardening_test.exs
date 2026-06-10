@@ -22,16 +22,18 @@ defmodule Arrow.Ipc.HardeningTest do
     test "LZ4-compressed stream is rejected as unsupported" do
       bin = File.read!(Path.join(@golden, "compressed.stream"))
 
-      assert {:error, %ArgumentError{message: msg}} = Arrow.Ipc.Stream.decode(bin)
-      assert msg =~ ~r/unsupported/
+      assert {:error, %Arrow.DecodeError{kind: :unsupported, message: msg}} =
+               Arrow.Ipc.Stream.decode(bin)
+
       assert msg =~ "compressed record batch body"
     end
 
     test "LZ4-compressed file is rejected as unsupported" do
       bin = File.read!(Path.join(@golden, "compressed.arrow"))
 
-      assert {:error, %ArgumentError{message: msg}} = Arrow.Ipc.File.decode(bin)
-      assert msg =~ ~r/unsupported/
+      assert {:error, %Arrow.DecodeError{kind: :unsupported, message: msg}} =
+               Arrow.Ipc.File.decode(bin)
+
       assert msg =~ "compressed record batch body"
     end
   end
@@ -41,15 +43,15 @@ defmodule Arrow.Ipc.HardeningTest do
   ## ---------------------------------------------------------------------
 
   describe "schema decoding rejections" do
-    test "big-endian schema raises an unsupported ArgumentError" do
+    test "big-endian schema raises an unsupported Arrow.DecodeError" do
       fb = %Flatbuf.Schema{endianness: :Big, fields: [], custom_metadata: [], features: []}
 
-      e = assert_raise(ArgumentError, fn -> Metadata.schema_from_fb_struct(fb) end)
-      assert e.message =~ "unsupported"
+      e = assert_raise(Arrow.DecodeError, fn -> Metadata.schema_from_fb_struct(fb) end)
+      assert e.kind == :unsupported
       assert e.message =~ "big-endian"
     end
 
-    test "Float16 (HALF precision) field raises an unsupported ArgumentError" do
+    test "Float16 (HALF precision) field raises an unsupported Arrow.DecodeError" do
       fb_field = %Flatbuf.Field{
         name: "h",
         nullable: true,
@@ -66,8 +68,8 @@ defmodule Arrow.Ipc.HardeningTest do
         features: []
       }
 
-      e = assert_raise(ArgumentError, fn -> Metadata.schema_from_fb_struct(fb) end)
-      assert e.message =~ "unsupported"
+      e = assert_raise(Arrow.DecodeError, fn -> Metadata.schema_from_fb_struct(fb) end)
+      assert e.kind == :unsupported
       assert e.message =~ "HALF"
     end
   end
@@ -186,12 +188,12 @@ defmodule Arrow.Ipc.HardeningTest do
       buffers = [%{offset: 0, length: 0}, %{offset: 0, length: 16}]
 
       e =
-        assert_raise(ArgumentError, fn ->
+        assert_raise(Arrow.DecodeError, fn ->
           Body.decode(schema, 4, nodes, buffers, <<0::size(16 * 8)>>)
         end)
 
+      assert e.kind == :malformed
       assert e.message =~ "zero declared length"
-      refute e.message =~ "unsupported"
     end
 
     test "zero-length Bool values buffer with rows raises" do
@@ -199,7 +201,7 @@ defmodule Arrow.Ipc.HardeningTest do
       nodes = [%{length: 3, null_count: 0}]
       buffers = [%{offset: 0, length: 0}, %{offset: 0, length: 0}]
 
-      assert_raise ArgumentError, ~r/Bool values buffer/, fn ->
+      assert_raise Arrow.DecodeError, ~r/Bool values buffer/, fn ->
         Body.decode(schema, 3, nodes, buffers, <<>>)
       end
     end
@@ -233,7 +235,9 @@ defmodule Arrow.Ipc.HardeningTest do
       schema_frame = binary_part(bin, 0, byte_size(bin) - byte_size(Arrow.Ipc.Stream.eos()))
       doubled = schema_frame <> schema_frame <> Arrow.Ipc.Stream.eos()
 
-      assert {:error, %ArgumentError{message: msg}} = Arrow.Ipc.Stream.decode(doubled)
+      assert {:error, %Arrow.DecodeError{kind: :malformed, message: msg}} =
+               Arrow.Ipc.Stream.decode(doubled)
+
       assert msg =~ "duplicate Schema"
     end
 
@@ -262,7 +266,10 @@ defmodule Arrow.Ipc.HardeningTest do
       corrupt = pre <> <<0, 0, 0, 0>> <> rest
 
       assert {:ok, _} = Arrow.Ipc.File.decode(file_bin)
-      assert {:error, %ArgumentError{message: msg}} = Arrow.Ipc.File.decode(corrupt)
+
+      assert {:error, %Arrow.DecodeError{kind: :malformed, message: msg}} =
+               Arrow.Ipc.File.decode(corrupt)
+
       assert msg =~ "continuation"
     end
   end

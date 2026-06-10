@@ -12,7 +12,7 @@ defmodule Arrow.Json.Reader do
 
   @doc """
   Parses a decoded JSON map into `{:ok, %{schema:, batches:}}` or
-  `{:error, reason}`.
+  `{:error, %Arrow.DecodeError{}}`.
   """
   @spec read(map()) ::
           {:ok,
@@ -21,7 +21,7 @@ defmodule Arrow.Json.Reader do
              dictionaries: %{optional(non_neg_integer()) => Arrow.Array.t()},
              batches: [RecordBatch.t()]
            }}
-          | {:error, term()}
+          | {:error, Arrow.DecodeError.t()}
   def read(%{"schema" => schema_map} = doc) do
     schema = read_schema(schema_map)
     dictionaries = doc |> Map.get("dictionaries", []) |> read_dictionaries(schema)
@@ -29,10 +29,20 @@ defmodule Arrow.Json.Reader do
 
     {:ok, %{schema: schema, dictionaries: dictionaries, batches: batches}}
   rescue
-    e -> {:error, e}
+    e in Arrow.DecodeError ->
+      {:error, e}
+
+    e in [MatchError, FunctionClauseError, ArgumentError] ->
+      {:error,
+       %Arrow.DecodeError{
+         kind: :malformed,
+         message: "malformed or truncated input: " <> Exception.message(e)
+       }}
   end
 
-  def read(_), do: {:error, :missing_schema}
+  def read(_) do
+    {:error, %Arrow.DecodeError{kind: :malformed, message: "JSON document has no \"schema\" key"}}
+  end
 
   ## ---------------------------------------------------------------------
   ## Schema
@@ -81,7 +91,9 @@ defmodule Arrow.Json.Reader do
   end
 
   defp read_type(%{"name" => "floatingpoint", "precision" => "HALF"}) do
-    raise ArgumentError, "unsupported type: floatingpoint HALF (supported: SINGLE, DOUBLE)"
+    raise Arrow.DecodeError,
+      kind: :unsupported,
+      message: "unsupported type: floatingpoint HALF (supported: SINGLE, DOUBLE)"
   end
 
   defp read_type(%{"name" => "floatingpoint", "precision" => p}) do
@@ -125,7 +137,9 @@ defmodule Arrow.Json.Reader do
     bw = Map.get(m, "bitWidth", 128)
 
     if bw not in [32, 64, 128, 256] do
-      raise ArgumentError, "unsupported type: decimal#{bw} (supported: 32, 64, 128, 256)"
+      raise Arrow.DecodeError,
+        kind: :unsupported,
+        message: "unsupported type: decimal#{bw} (supported: 32, 64, 128, 256)"
     end
 
     %Type.Decimal{bit_width: bw, precision: p, scale: s}
@@ -143,7 +157,9 @@ defmodule Arrow.Json.Reader do
   defp read_type(%{"name" => "largebinary"}), do: %Type.LargeBinary{}
   defp read_type(%{"name" => "largelist"}), do: %Type.LargeList{}
 
-  defp read_type(other), do: raise(ArgumentError, "unsupported type: #{inspect(other)}")
+  defp read_type(other) do
+    raise Arrow.DecodeError, kind: :unsupported, message: "unsupported type: #{inspect(other)}"
+  end
 
   defp precision_atom("SINGLE"), do: :single
   defp precision_atom("DOUBLE"), do: :double
@@ -170,7 +186,10 @@ defmodule Arrow.Json.Reader do
     Map.new(list, fn %{"id" => id, "data" => %{"count" => count, "columns" => [col]}} ->
       field =
         Field.find_by_dictionary_id(schema, id) ||
-          raise(ArgumentError, "dictionary id #{id} has no referencing field")
+          raise(Arrow.DecodeError,
+            kind: :malformed,
+            message: "dictionary id #{id} has no referencing field"
+          )
 
       {id, read_column(col, Field.value_field(field), count)}
     end)
@@ -178,7 +197,9 @@ defmodule Arrow.Json.Reader do
 
   defp read_batch(%{"count" => count, "columns" => cols}, %Schema{fields: fields} = schema) do
     if length(cols) != length(fields) do
-      raise ArgumentError, "batch has #{length(cols)} columns but schema has #{length(fields)}"
+      raise Arrow.DecodeError,
+        kind: :malformed,
+        message: "batch has #{length(cols)} columns but schema has #{length(fields)}"
     end
 
     columns =
@@ -339,8 +360,10 @@ defmodule Arrow.Json.Reader do
     raw_offsets = col |> Map.fetch!("OFFSET") |> Enum.map(&parse_integer/1)
 
     if length(raw_offsets) != count + 1 do
-      raise ArgumentError,
-            "list OFFSET must have count+1 entries (got #{length(raw_offsets)} for count #{count})"
+      raise Arrow.DecodeError,
+        kind: :malformed,
+        message:
+          "list OFFSET must have count+1 entries (got #{length(raw_offsets)} for count #{count})"
     end
 
     offsets =
@@ -367,8 +390,10 @@ defmodule Arrow.Json.Reader do
     child_cols = Map.fetch!(col, "children")
 
     if length(child_cols) != length(child_fields) do
-      raise ArgumentError,
-            "struct has #{length(child_cols)} child columns but schema has #{length(child_fields)} child fields"
+      raise Arrow.DecodeError,
+        kind: :malformed,
+        message:
+          "struct has #{length(child_cols)} child columns but schema has #{length(child_fields)} child fields"
     end
 
     children =
@@ -525,8 +550,10 @@ defmodule Arrow.Json.Reader do
     raw_offsets = col |> Map.fetch!("OFFSET") |> Enum.map(&parse_integer/1)
 
     if length(raw_offsets) != count + 1 do
-      raise ArgumentError,
-            "largelist OFFSET must have count+1 entries (got #{length(raw_offsets)} for count #{count})"
+      raise Arrow.DecodeError,
+        kind: :malformed,
+        message:
+          "largelist OFFSET must have count+1 entries (got #{length(raw_offsets)} for count #{count})"
     end
 
     offsets =
@@ -609,8 +636,10 @@ defmodule Arrow.Json.Reader do
     raw_offsets = col |> Map.fetch!("OFFSET") |> Enum.map(&parse_integer/1)
 
     if length(raw_offsets) != count + 1 do
-      raise ArgumentError,
-            "map OFFSET must have count+1 entries (got #{length(raw_offsets)} for count #{count})"
+      raise Arrow.DecodeError,
+        kind: :malformed,
+        message:
+          "map OFFSET must have count+1 entries (got #{length(raw_offsets)} for count #{count})"
     end
 
     offsets =
@@ -640,8 +669,9 @@ defmodule Arrow.Json.Reader do
 
   defp pack_validity_field(flags, count) when is_list(flags) do
     if length(flags) != count do
-      raise ArgumentError,
-            "VALIDITY has #{length(flags)} entries but column count is #{count}"
+      raise Arrow.DecodeError,
+        kind: :malformed,
+        message: "VALIDITY has #{length(flags)} entries but column count is #{count}"
     end
 
     case Buffer.pack_validity(flags) do
@@ -683,8 +713,9 @@ defmodule Arrow.Json.Reader do
     bytes = decode_hex(hex)
 
     if byte_size(bytes) != byte_width do
-      raise ArgumentError,
-            "fixedsizebinary slot expected #{byte_width} bytes, got #{byte_size(bytes)}"
+      raise Arrow.DecodeError,
+        kind: :malformed,
+        message: "fixedsizebinary slot expected #{byte_width} bytes, got #{byte_size(bytes)}"
     end
 
     bytes

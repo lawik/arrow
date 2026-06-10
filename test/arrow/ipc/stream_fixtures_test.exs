@@ -12,10 +12,11 @@ defmodule Arrow.Ipc.StreamFixturesTest do
     which compares per-slot logical values while ignoring byte
     differences at null positions or in validity-bitmap padding.
 
-  Decode failures are soft skips only when the library rejects a type as
-  unsupported; any other failure flunks. When `--include fixtures` is
-  given but the corpus is absent, the placeholder test flunks rather than
-  passing green.
+  Decode failures are soft skips only for
+  `{:error, %Arrow.DecodeError{kind: :unsupported}}` — the library
+  deliberately rejecting a format feature; `:malformed` errors and
+  anything else flunk. When `--include fixtures` is given but the corpus
+  is absent, the placeholder test flunks rather than passing green.
   """
 
   use ExUnit.Case, async: true
@@ -81,15 +82,12 @@ defmodule Arrow.Ipc.StreamFixturesTest do
         {:ok, payload} ->
           {:ok, payload}
 
-        {:error, %ArgumentError{message: msg}} ->
-          if msg =~ "unsupported" or msg =~ "not yet supported" do
-            {:skip, "#{source}: #{msg}"}
-          else
-            flunk("#{source} decode failed: #{msg}")
-          end
+        {:error, %Arrow.DecodeError{kind: :unsupported, message: msg}} ->
+          {:skip, "#{source}: #{msg}"}
 
+        # :malformed DecodeErrors and anything else are genuine failures.
         {:error, other} ->
-          flunk("#{source} decode crashed: #{inspect(other)}")
+          flunk("#{source} decode failed: #{inspect(other)}")
       end
     end
   end

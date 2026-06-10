@@ -38,6 +38,13 @@ defmodule Arrow.Ipc.File do
   - The Schema appears once in the inline stream prefix and again in
     the Footer. Decode uses *only* the Footer's copy — the inline
     stream prefix is never parsed — and does not cross-check the two.
+
+  ## Errors
+
+  `decode/1` returns `{:ok, payload}` or `{:error, %Arrow.DecodeError{}}`
+  with kind `:unsupported` (the input uses a feature this library
+  deliberately rejects) or `:malformed` (the input is corrupt, truncated,
+  or internally inconsistent). `decode!/1` raises the same error.
   """
 
   alias Arrow.Ipc.{Body, Flatbuf, Metadata, Stream}
@@ -47,6 +54,13 @@ defmodule Arrow.Ipc.File do
   @magic_suffix "ARROW1"
   @version :V5
   @continuation 0xFFFFFFFF
+
+  @typedoc "Everything a decoded file carries: schema, dictionary registry, batches."
+  @type payload :: %{
+          schema: Arrow.Schema.t(),
+          dictionaries: %{optional(non_neg_integer()) => Arrow.Array.t()},
+          batches: [Arrow.RecordBatch.t()]
+        }
 
   ## ---------------------------------------------------------------------
   ## Encode
@@ -132,27 +146,42 @@ defmodule Arrow.Ipc.File do
 
   @doc """
   Parses an Arrow IPC file binary into `{:ok, %{schema:, dictionaries:,
-  batches:}}` or `{:error, reason}`.
+  batches:}}` or `{:error, %Arrow.DecodeError{}}`.
   """
-  @spec decode(binary()) ::
-          {:ok,
-           %{
-             schema: Arrow.Schema.t(),
-             dictionaries: %{optional(non_neg_integer()) => Arrow.Array.t()},
-             batches: [Arrow.RecordBatch.t()]
-           }}
-          | {:error, term()}
+  @spec decode(binary()) :: {:ok, payload()} | {:error, Arrow.DecodeError.t()}
   def decode(binary) when is_binary(binary) do
     {:ok, do_decode(binary)}
   rescue
-    e -> {:error, e}
+    e in Arrow.DecodeError ->
+      {:error, e}
+
+    e in [MatchError, FunctionClauseError, ArgumentError] ->
+      {:error,
+       %Arrow.DecodeError{
+         kind: :malformed,
+         message: "malformed or truncated input: " <> Exception.message(e)
+       }}
+  end
+
+  @doc """
+  Like `decode/1`, but returns the payload directly and raises
+  `Arrow.DecodeError` on failure.
+  """
+  @spec decode!(binary()) :: payload()
+  def decode!(binary) when is_binary(binary) do
+    case decode(binary) do
+      {:ok, payload} -> payload
+      {:error, %Arrow.DecodeError{} = e} -> raise e
+    end
   end
 
   defp do_decode(binary) do
     size = byte_size(binary)
 
     if size < byte_size(@magic) + byte_size(@magic_suffix) + 4 do
-      raise ArgumentError, "buffer too small to be an Arrow IPC file (#{size} bytes)"
+      raise Arrow.DecodeError,
+        kind: :malformed,
+        message: "buffer too small to be an Arrow IPC file (#{size} bytes)"
     end
 
     <<@magic, _rest::binary>> = binary
@@ -200,7 +229,9 @@ defmodule Arrow.Ipc.File do
         Body.decode(schema, length, nodes, buffers, body)
 
       other ->
-        raise ArgumentError, "file Block points at non-RecordBatch message: #{inspect(other)}"
+        raise Arrow.DecodeError,
+          kind: :malformed,
+          message: "file Block points at non-RecordBatch message: #{inspect(other)}"
     end
   end
 
@@ -210,19 +241,26 @@ defmodule Arrow.Ipc.File do
     case fb_message.header do
       {:DictionaryBatch, fb_db} ->
         if fb_db.isDelta do
-          raise ArgumentError, "delta DictionaryBatch is not yet supported"
+          raise Arrow.DecodeError,
+            kind: :unsupported,
+            message: "delta DictionaryBatch is not yet supported"
         end
 
         field =
           Arrow.Field.find_by_dictionary_id(schema, fb_db.id) ||
-            raise(ArgumentError, "DictionaryBatch references unknown id #{fb_db.id}")
+            raise(Arrow.DecodeError,
+              kind: :malformed,
+              message: "DictionaryBatch references unknown id #{fb_db.id}"
+            )
 
         %{nodes: nodes, buffers: buffers} = Metadata.record_batch_descriptors(fb_db.data)
         array = Body.decode_array_buffers(Arrow.Field.value_field(field), nodes, buffers, body)
         {fb_db.id, array}
 
       other ->
-        raise ArgumentError, "dictionary Block points at non-DictionaryBatch: #{inspect(other)}"
+        raise Arrow.DecodeError,
+          kind: :malformed,
+          message: "dictionary Block points at non-DictionaryBatch: #{inspect(other)}"
     end
   end
 
@@ -236,10 +274,12 @@ defmodule Arrow.Ipc.File do
       metadata::binary-size(meta_bytes_len), body::binary-size(body_len), _rest::binary>> = binary
 
     if marker != @continuation do
-      raise ArgumentError,
-            "Block at offset #{off} does not start with the 0xFFFFFFFF continuation " <>
-              "marker; unsupported: legacy (pre-0.15 / V4) file framing, or the Block " <>
-              "offset is corrupt"
+      raise Arrow.DecodeError,
+        kind: :malformed,
+        message:
+          "Block at offset #{off} does not start with the 0xFFFFFFFF continuation " <>
+            "marker; unsupported: legacy (pre-0.15 / V4) file framing, or the Block " <>
+            "offset is corrupt"
     end
 
     fb_message = Flatbuf.Message.decode_at(metadata, Wire.root_table_pos(metadata))

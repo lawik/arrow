@@ -653,7 +653,9 @@ defmodule Arrow.Ipc.Body do
   end
 
   defp decode_array(%Field{type: type}, _nodes, _buffers, _body) do
-    raise ArgumentError, "Body.decode: unsupported array type #{inspect(type)}"
+    raise Arrow.DecodeError,
+      kind: :unsupported,
+      message: "Body.decode: unsupported array type #{inspect(type)}"
   end
 
   ## ---------------------------------------------------------------------
@@ -665,8 +667,9 @@ defmodule Arrow.Ipc.Body do
   defp take_validity(_body, %{length: 0}, _row_count, null_count) do
     # null_count is non-zero here (the clause above catches 0), so a
     # zero-length validity buffer contradicts the FieldNode's claim.
-    raise ArgumentError,
-          "validity buffer has zero declared length but the node claims #{null_count} nulls"
+    raise Arrow.DecodeError,
+      kind: :malformed,
+      message: "validity buffer has zero declared length but the node claims #{null_count} nulls"
   end
 
   defp take_validity(body, %{offset: off, length: len}, _row_count, _null_count) do
@@ -680,8 +683,9 @@ defmodule Arrow.Ipc.Body do
   defp take_bitmap(_body, %{length: 0}, 0), do: <<>>
 
   defp take_bitmap(_body, %{length: 0}, row_count) do
-    raise ArgumentError,
-          "Bool values buffer has zero declared length but the node claims #{row_count} rows"
+    raise Arrow.DecodeError,
+      kind: :malformed,
+      message: "Bool values buffer has zero declared length but the node claims #{row_count} rows"
   end
 
   defp take_slice(body, %{offset: off, length: len}) do

@@ -15,8 +15,8 @@ defmodule Arrow.Ipc.Metadata do
     Covers every Tier 1 + Tier 2 logical type plus `LargeUtf8`,
     `LargeBinary`, `LargeList`, and `Interval`. The remaining variants
     (`LargeListView`, `ListView`, `BinaryView`, `Utf8View`,
-    `RunEndEncoded`, `Union`, and `Float16`) raise `ArgumentError` until
-    they're added to `Arrow.Type.*`.
+    `RunEndEncoded`, `Union`, and `Float16`) raise `Arrow.DecodeError`
+    (kind `:unsupported`) until they're added to `Arrow.Type.*`.
   - Dictionary-encoded fields round-trip through
     `Arrow.Field.dictionary` / `Arrow.Type.DictionaryEncoding`.
   - `encode_record_batch/1` and `decode_record_batch/3` cover the
@@ -120,7 +120,8 @@ defmodule Arrow.Ipc.Metadata do
   body decoder cannot honor are rejected in exactly one place rather
   than silently misread.
 
-  Raises `ArgumentError` when the batch declares body compression.
+  Raises `Arrow.DecodeError` (kind `:unsupported`) when the batch
+  declares body compression.
   """
   @spec record_batch_descriptors(Flatbuf.RecordBatch.t()) :: %{
           length: non_neg_integer(),
@@ -128,9 +129,11 @@ defmodule Arrow.Ipc.Metadata do
           buffers: [Body.buffer_desc()]
         }
   def record_batch_descriptors(%Flatbuf.RecordBatch{compression: %Flatbuf.BodyCompression{} = c}) do
-    raise ArgumentError,
-          "unsupported: compressed record batch body " <>
-            "(codec #{inspect(c.codec)}, method #{inspect(c.method)})"
+    raise Arrow.DecodeError,
+      kind: :unsupported,
+      message:
+        "unsupported: compressed record batch body " <>
+          "(codec #{inspect(c.codec)}, method #{inspect(c.method)})"
   end
 
   def record_batch_descriptors(%Flatbuf.RecordBatch{} = fb) do
@@ -172,8 +175,9 @@ defmodule Arrow.Ipc.Metadata do
   end
 
   defp from_fb_schema(%Flatbuf.Schema{endianness: :Big}) do
-    raise ArgumentError,
-          "unsupported: big-endian schema (buffer contents would require byte-swapping)"
+    raise Arrow.DecodeError,
+      kind: :unsupported,
+      message: "unsupported: big-endian schema (buffer contents would require byte-swapping)"
   end
 
   defp from_fb_schema(%Flatbuf.Schema{fields: fields, custom_metadata: cm}) do
@@ -301,7 +305,9 @@ defmodule Arrow.Ipc.Metadata do
   end
 
   defp type_from_fb({:FloatingPoint, %Flatbuf.FloatingPoint{precision: :HALF}}) do
-    raise ArgumentError, "unsupported FB type variant: FloatingPoint HALF (Float16)"
+    raise Arrow.DecodeError,
+      kind: :unsupported,
+      message: "unsupported FB type variant: FloatingPoint HALF (Float16)"
   end
 
   defp type_from_fb({:FloatingPoint, %Flatbuf.FloatingPoint{precision: p}}) do
@@ -363,7 +369,9 @@ defmodule Arrow.Ipc.Metadata do
               :RunEndEncoded,
               :Union
             ] do
-    raise ArgumentError, "unsupported FB type variant: #{variant}"
+    raise Arrow.DecodeError,
+      kind: :unsupported,
+      message: "unsupported FB type variant: #{variant}"
   end
 
   ## ---------------------------------------------------------------------

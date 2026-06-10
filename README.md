@@ -49,6 +49,9 @@ bin = Arrow.Ipc.File.encode(schema, [batch])
 {:ok, decoded} = Arrow.Ipc.File.decode(bin)
 ```
 
+Decoders return `{:ok, payload}` or `{:error, %Arrow.DecodeError{kind:
+:unsupported | :malformed}}`; `decode!/1` variants raise instead.
+
 Arrow integration test JSON:
 
 ```elixir

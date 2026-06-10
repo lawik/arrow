@@ -30,6 +30,13 @@ defmodule Arrow.Ipc.Stream do
   registry (delta dictionaries are rejected). Footer interactions belong
   to the file format — see `Arrow.Ipc.File`, which reuses the frame
   builders exposed here.
+
+  ## Errors
+
+  `decode/1` returns `{:ok, payload}` or `{:error, %Arrow.DecodeError{}}`
+  with kind `:unsupported` (the input uses a feature this library
+  deliberately rejects) or `:malformed` (the input is corrupt, truncated,
+  or internally inconsistent). `decode!/1` raises the same error.
   """
 
   alias Arrow.Ipc.{Body, Flatbuf, Metadata}
@@ -38,6 +45,13 @@ defmodule Arrow.Ipc.Stream do
   @continuation 0xFFFFFFFF
   @alignment 8
   @version :V5
+
+  @typedoc "Everything a decoded stream carries: schema, dictionary registry, batches."
+  @type payload :: %{
+          schema: Arrow.Schema.t(),
+          dictionaries: %{optional(non_neg_integer()) => Arrow.Array.t()},
+          batches: [Arrow.RecordBatch.t()]
+        }
 
   @doc """
   Builds a complete Arrow IPC stream from a schema, optional dictionaries
@@ -60,20 +74,33 @@ defmodule Arrow.Ipc.Stream do
 
   @doc """
   Parses a complete Arrow IPC stream binary into `{:ok, %{schema:,
-  dictionaries:, batches:}}` or `{:error, reason}`.
+  dictionaries:, batches:}}` or `{:error, %Arrow.DecodeError{}}`.
   """
-  @spec decode(binary()) ::
-          {:ok,
-           %{
-             schema: Arrow.Schema.t(),
-             dictionaries: %{optional(non_neg_integer()) => Arrow.Array.t()},
-             batches: [Arrow.RecordBatch.t()]
-           }}
-          | {:error, term()}
+  @spec decode(binary()) :: {:ok, payload()} | {:error, Arrow.DecodeError.t()}
   def decode(binary) when is_binary(binary) do
     {:ok, do_decode(binary, nil, %{}, [])}
   rescue
-    e -> {:error, e}
+    e in Arrow.DecodeError ->
+      {:error, e}
+
+    e in [MatchError, FunctionClauseError, ArgumentError] ->
+      {:error,
+       %Arrow.DecodeError{
+         kind: :malformed,
+         message: "malformed or truncated input: " <> Exception.message(e)
+       }}
+  end
+
+  @doc """
+  Like `decode/1`, but returns the payload directly and raises
+  `Arrow.DecodeError` on failure.
+  """
+  @spec decode!(binary()) :: payload()
+  def decode!(binary) when is_binary(binary) do
+    case decode(binary) do
+      {:ok, payload} -> payload
+      {:error, %Arrow.DecodeError{} = e} -> raise e
+    end
   end
 
   ## ---------------------------------------------------------------------
@@ -289,7 +316,7 @@ defmodule Arrow.Ipc.Stream do
 
   defp handle_header({:Schema, _}, _body, _rest, schema, _dicts, _batches)
        when schema != nil do
-    raise ArgumentError, "duplicate Schema message mid-stream"
+    raise Arrow.DecodeError, kind: :malformed, message: "duplicate Schema message mid-stream"
   end
 
   defp handle_header({:Schema, fb_schema}, _body, rest, _schema, dicts, batches) do
@@ -297,7 +324,8 @@ defmodule Arrow.Ipc.Stream do
   end
 
   defp handle_header({:RecordBatch, fb_rb}, body, rest, schema, dicts, batches) do
-    if schema == nil, do: raise(ArgumentError, "RecordBatch message before Schema")
+    if schema == nil,
+      do: raise(Arrow.DecodeError, kind: :malformed, message: "RecordBatch message before Schema")
 
     %{length: length, nodes: nodes, buffers: buffers} =
       Metadata.record_batch_descriptors(fb_rb)
@@ -307,26 +335,45 @@ defmodule Arrow.Ipc.Stream do
   end
 
   defp handle_header({:DictionaryBatch, fb_db}, body, rest, schema, dicts, batches) do
-    if schema == nil, do: raise(ArgumentError, "DictionaryBatch message before Schema")
-    if fb_db.isDelta, do: raise(ArgumentError, "delta DictionaryBatch is not yet supported")
+    if schema == nil do
+      raise Arrow.DecodeError, kind: :malformed, message: "DictionaryBatch message before Schema"
+    end
+
+    if fb_db.isDelta do
+      raise Arrow.DecodeError,
+        kind: :unsupported,
+        message: "delta DictionaryBatch is not yet supported"
+    end
 
     field =
       Arrow.Field.find_by_dictionary_id(schema, fb_db.id) ||
-        raise(ArgumentError, "DictionaryBatch references unknown id #{fb_db.id}")
+        raise(Arrow.DecodeError,
+          kind: :malformed,
+          message: "DictionaryBatch references unknown id #{fb_db.id}"
+        )
 
     %{nodes: nodes, buffers: buffers} = Metadata.record_batch_descriptors(fb_db.data)
     array = Body.decode_array_buffers(Arrow.Field.value_field(field), nodes, buffers, body)
     do_decode(rest, schema, Map.put(dicts, fb_db.id, array), batches)
   end
 
-  defp handle_header({:Tensor, _}, _body, _rest, _schema, _dicts, _batches),
-    do: raise(ArgumentError, "Tensor messages are out of scope for the stream reader")
+  defp handle_header({:Tensor, _}, _body, _rest, _schema, _dicts, _batches) do
+    raise Arrow.DecodeError,
+      kind: :unsupported,
+      message: "Tensor messages are out of scope for the stream reader"
+  end
 
-  defp handle_header({:SparseTensor, _}, _body, _rest, _schema, _dicts, _batches),
-    do: raise(ArgumentError, "SparseTensor messages are out of scope for the stream reader")
+  defp handle_header({:SparseTensor, _}, _body, _rest, _schema, _dicts, _batches) do
+    raise Arrow.DecodeError,
+      kind: :unsupported,
+      message: "SparseTensor messages are out of scope for the stream reader"
+  end
 
-  defp handle_header(other, _body, _rest, _schema, _dicts, _batches),
-    do: raise(ArgumentError, "unexpected Message header variant: #{inspect(other)}")
+  defp handle_header(other, _body, _rest, _schema, _dicts, _batches) do
+    raise Arrow.DecodeError,
+      kind: :malformed,
+      message: "unexpected Message header variant: #{inspect(other)}"
+  end
 
   defp decode_message_metadata(binary) do
     pos = Wire.root_table_pos(binary)
@@ -334,7 +381,7 @@ defmodule Arrow.Ipc.Stream do
   end
 
   defp build_result(nil, _dicts, _batches),
-    do: raise(ArgumentError, "stream ended before Schema message")
+    do: raise(Arrow.DecodeError, kind: :malformed, message: "stream ended before Schema message")
 
   defp build_result(schema, dicts, batches) do
     %{schema: schema, dictionaries: dicts, batches: Enum.reverse(batches)}

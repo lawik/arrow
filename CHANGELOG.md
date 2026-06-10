@@ -14,6 +14,9 @@ Initial release.
 - IPC stream and file formats: RecordBatch + DictionaryBatch messages,
   end-of-stream markers, file footer and Block descriptors.
 - Arrow integration-test JSON reader and writer (`Arrow.Json`).
+- Typed decode errors: decoders return `{:error, %Arrow.DecodeError{}}`
+  with kind `:unsupported` or `:malformed`, plus raising `decode!/1`
+  variants.
 - Null-aware logical comparator (`Arrow.Logical`).
 - Archery integration mix tasks (`mix arrow.integration.*`) with
   subprocess shims under `bin/`.
