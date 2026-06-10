@@ -203,6 +203,55 @@ defmodule Arrow.LogicalTest do
       assert Logical.schemas_equivalent?(schema_a, schema_b)
     end
 
+    test "schemas_equivalent? ignores Map child field names" do
+      map_schema = fn entries, key, value ->
+        %Arrow.Schema{
+          fields: [
+            %Arrow.Field{
+              name: "m",
+              type: %Arrow.Type.Map{keys_sorted: false},
+              nullable: true,
+              children: [
+                %Arrow.Field{
+                  name: entries,
+                  type: %Arrow.Type.Struct{},
+                  nullable: false,
+                  children: [
+                    %Arrow.Field{name: key, type: %Arrow.Type.Utf8{}, nullable: false},
+                    %Arrow.Field{
+                      name: value,
+                      type: %Arrow.Type.Int{bit_width: 32, signed: true},
+                      nullable: true
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      end
+
+      canonical = map_schema.("entries", "key", "value")
+      renamed = map_schema.("some_entries", "some_key", "some_value")
+
+      refute canonical == renamed, "test setup: schemas should differ on child names"
+      assert Logical.schemas_equivalent?(canonical, renamed)
+
+      # Everything other than the names still matters.
+      stricter = map_schema.("entries", "key", "value")
+      [m] = stricter.fields
+      [entries] = m.children
+      [key, value] = entries.children
+
+      not_nullable = %Arrow.Schema{
+        fields: [
+          %{m | children: [%{entries | children: [key, %{value | nullable: false}]}]}
+        ]
+      }
+
+      refute Logical.schemas_equivalent?(canonical, not_nullable)
+    end
+
     test "payloads_equivalent? across renumbered dictionary IDs" do
       base_field = %Arrow.Field{
         name: "d",

@@ -255,11 +255,16 @@ defmodule Arrow.Logical do
   @doc """
   True iff two schemas describe the same logical shape.
 
-  Identical to `==` except that `Arrow.Field.dictionary.id` is treated
-  as an opaque label: two fields where one has `dictionary.id = 0` and
-  the other has `dictionary.id = 7` are still equivalent provided the
-  rest of their dictionary annotation (index_type, is_ordered) and
-  surrounding field structure agrees.
+  Identical to `==` except that:
+
+  - `Arrow.Field.dictionary.id` is treated as an opaque label: two
+    fields where one has `dictionary.id = 0` and the other has
+    `dictionary.id = 7` are still equivalent provided the rest of
+    their dictionary annotation (index_type, is_ordered) and
+    surrounding field structure agrees.
+  - The names of a Map field's children (the entries struct and its
+    key/value fields) are ignored — per the spec they are
+    recommendations, not part of the logical type.
 
   Use `==` instead if you need strict structural equality.
   """
@@ -321,13 +326,47 @@ defmodule Arrow.Logical do
 
   defp fields_equivalent?(_, _), do: false
 
-  defp field_equivalent?(%Arrow.Field{} = a, %Arrow.Field{} = b) do
-    a.name == b.name and
+  defp field_equivalent?(a, b, ignore_name? \\ false)
+
+  defp field_equivalent?(%Arrow.Field{} = a, %Arrow.Field{} = b, ignore_name?) do
+    (ignore_name? or a.name == b.name) and
       a.type == b.type and
       a.nullable == b.nullable and
       a.metadata == b.metadata and
-      fields_equivalent?(a.children, b.children) and
+      children_equivalent?(a, b) and
       dictionary_encoding_equivalent?(a.dictionary, b.dictionary)
+  end
+
+  # The names of a Map field's children — the entries struct and its
+  # key/value fields — are recommendations ("entries"/"key"/"value"),
+  # not part of the logical type; the reference C++ comparison ignores
+  # them (`MapType` equality with `check_metadata = false`). Compare
+  # those two levels name-insensitively; everything beneath the key and
+  # value fields is compared in full again.
+  defp children_equivalent?(
+         %Arrow.Field{type: %Arrow.Type.Map{}, children: [entries_a]},
+         %Arrow.Field{type: %Arrow.Type.Map{}, children: [entries_b]}
+       ) do
+    field_equivalent_below_map?(entries_a, entries_b)
+  end
+
+  defp children_equivalent?(%Arrow.Field{type: %Arrow.Type.Map{}}, %Arrow.Field{
+         type: %Arrow.Type.Map{}
+       }),
+       do: false
+
+  defp children_equivalent?(%Arrow.Field{} = a, %Arrow.Field{} = b),
+    do: fields_equivalent?(a.children, b.children)
+
+  defp field_equivalent_below_map?(%Arrow.Field{} = a, %Arrow.Field{} = b) do
+    a.type == b.type and
+      a.nullable == b.nullable and
+      a.metadata == b.metadata and
+      dictionary_encoding_equivalent?(a.dictionary, b.dictionary) and
+      length(a.children) == length(b.children) and
+      a.children
+      |> Enum.zip(b.children)
+      |> Enum.all?(fn {x, y} -> field_equivalent?(x, y, true) end)
   end
 
   defp dictionary_encoding_equivalent?(nil, nil), do: true
