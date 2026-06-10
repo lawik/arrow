@@ -23,11 +23,13 @@
     "priv",
     "test",
     "REVIEW.md",
-    "lib/arrow/ipc/flatbuf"
+    "lib/arrow/ipc/flatbuf",
+    "integration/archery-elixir.patch"
   ],
   "words": [
     "bigendian",
     "bufs",
+    "datagen",
     "fixedsizebinary",
     "fixedsizelist",
     "flatbuf",
@@ -38,12 +40,16 @@
     "largebinary",
     "largelist",
     "largeutf",
+    "lawik",
+    "littleendian",
     "nanoarrow",
     "parameterises",
     "pipefail",
     "prec",
     "preorder",
     "pyarrow",
-    "unzoned"
+    "shareddict",
+    "unzoned",
+    "venv"
   ]
 }

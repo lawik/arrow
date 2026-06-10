@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Archery integration shim: arrow-file-to-stream
+#
+# Forwards to `mix arrow.integration.file_to_stream`, run from the
+# project root so Mix can find mix.exs. archery's cross-language test
+# runner subprocesses this binary by name.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+cd "$PROJECT_ROOT"
+exec mix arrow.integration.file_to_stream "$@"

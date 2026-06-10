@@ -78,6 +78,33 @@ defmodule Mix.Tasks.Arrow.IntegrationTasksTest do
   end
 
   @tag :tmp_dir
+  test "file_to_stream and stream_to_file round-trip with dictionaries", %{tmp_dir: tmp} do
+    stream_path = Path.join(tmp, "dictionary.stream")
+    arrow_path = Path.join(tmp, "dictionary.arrow")
+
+    Mix.Task.rerun("arrow.integration.file_to_stream", [
+      "--arrow",
+      @golden_arrow,
+      "--stream",
+      stream_path
+    ])
+
+    {:ok, from_stream} = stream_path |> File.read!() |> Arrow.Ipc.Stream.decode()
+    assert map_size(from_stream.dictionaries) == 1
+
+    Mix.Task.rerun("arrow.integration.stream_to_file", [
+      "--stream",
+      stream_path,
+      "--arrow",
+      arrow_path
+    ])
+
+    {:ok, decoded} = arrow_path |> File.read!() |> IpcFile.decode()
+    assert map_size(decoded.dictionaries) == 1
+    assert Arrow.Logical.payloads_equivalent?(golden_payload(), decoded)
+  end
+
+  @tag :tmp_dir
   test "malformed input raises Mix.Error, not MatchError", %{tmp_dir: tmp} do
     bad_path = Path.join(tmp, "bad.json")
     File.write!(bad_path, "not json")
