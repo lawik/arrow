@@ -10,10 +10,10 @@ corpus, with pyarrow-produced golden files in the default test suite.
 {:arrow, "~> 0.1.0"}
 ```
 
-`:flatbuf` is a `:dev`-only path dependency, included only when a local
-checkout exists — used once to regenerate the metadata codec from the
-vendored `.fbs` sources. Generated code is dependency-free; the project
-compiles and tests without it.
+`:flatbuf` is a `:dev`-only dependency (tracking
+[lawik/flatbuf](https://github.com/lawik/flatbuf) main) — used once to
+regenerate the metadata codec from the vendored `.fbs` sources.
+Generated code is dependency-free.
 
 ## Use
 

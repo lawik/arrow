@@ -86,18 +86,9 @@ defmodule Arrow.MixProject do
       {:ex_doc, "~> 0.40", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:spellweaver, "~> 0.1", only: [:dev, :test], runtime: false}
-    ] ++ flatbuf_dep()
-  end
-
-  # Dev-only path dependency used to regenerate the FlatBuffers metadata
-  # codec. Only included when a local checkout exists so a plain clone
-  # still compiles in :dev.
-  defp flatbuf_dep do
-    if File.dir?("../flatbuf-stable") do
-      [{:flatbuf, path: "../flatbuf-stable", only: [:dev], runtime: false}]
-    else
-      []
-    end
+      {:spellweaver, "~> 0.1", only: [:dev, :test], runtime: false},
+      # Dev-only, used to regenerate the FlatBuffers metadata codec.
+      {:flatbuf, github: "lawik/flatbuf", only: [:dev], runtime: false}
+    ]
   end
 end
