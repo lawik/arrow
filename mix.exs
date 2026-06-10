@@ -35,7 +35,8 @@ defmodule Arrow.MixProject do
     [
       name: :arrow,
       licenses: ["Apache-2.0"],
-      links: %{"GitHub" => "https://github.com/TODO/arrow"}
+      links: %{"GitHub" => "https://github.com/lawik/arrow"},
+      files: ~w(lib priv/fbs .formatter.exs mix.exs README.md LICENSE.md CHANGELOG.md)
     ]
   end
 
@@ -81,14 +82,22 @@ defmodule Arrow.MixProject do
     [
       {:nstandard, "~> 0.3"},
       {:jason, "~> 1.4"},
-      {:flatbuf, path: "../flatbuf-stable", only: [:dev], runtime: false},
       {:igniter, "~> 0.6", only: [:dev, :test]},
       {:ex_doc, "~> 0.40", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:spellweaver, "~> 0.1", only: [:dev, :test], runtime: false}
-      # {:dep_from_hexpm, "~> 0.3.0"},
-      # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
-    ]
+    ] ++ flatbuf_dep()
+  end
+
+  # Dev-only path dependency used to regenerate the FlatBuffers metadata
+  # codec. Only included when a local checkout exists so a plain clone
+  # still compiles in :dev.
+  defp flatbuf_dep do
+    if File.dir?("../flatbuf-stable") do
+      [{:flatbuf, path: "../flatbuf-stable", only: [:dev], runtime: false}]
+    else
+      []
+    end
   end
 end

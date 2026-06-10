@@ -22,10 +22,12 @@
     "mix.exs",
     "priv",
     "test",
-    "REVIEW.md"
+    "REVIEW.md",
+    "lib/arrow/ipc/flatbuf"
   ],
   "words": [
     "bigendian",
+    "bufs",
     "fixedsizebinary",
     "fixedsizelist",
     "flatbuf",
@@ -33,9 +35,14 @@
     "flatbuffers",
     "floatingpoint",
     "foobarbaz",
+    "largebinary",
+    "largelist",
+    "largeutf",
     "nanoarrow",
     "parameterises",
+    "pipefail",
     "prec",
+    "preorder",
     "pyarrow",
     "unzoned"
   ]

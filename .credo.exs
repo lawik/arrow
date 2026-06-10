@@ -3,7 +3,8 @@
     %{
       name: "default",
       files: %{
-        included: ["lib/"]
+        included: ["lib/"],
+        excluded: ["lib/arrow/ipc/flatbuf/"]
       },
       strict: true,
       checks: [
