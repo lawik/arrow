@@ -154,7 +154,9 @@ defmodule Arrow.Buffer do
       [1, 2, 3]
   """
   @spec unpack_primitive(binary(), primitive_kind(), non_neg_integer()) :: [number()]
-  def unpack_primitive(<<>>, _kind, 0), do: []
+  # A zero-length buffer may still carry alignment padding, so accept
+  # any binary at length 0.
+  def unpack_primitive(_binary, _kind, 0), do: []
 
   def unpack_primitive(binary, kind, length) when length > 0 do
     do_unpack_primitive(binary, kind, length, [])

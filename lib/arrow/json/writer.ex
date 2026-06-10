@@ -150,7 +150,6 @@ defmodule Arrow.Json.Writer do
   defp interval_unit_string(:day_time), do: "DAY_TIME"
   defp interval_unit_string(:month_day_nano), do: "MONTH_DAY_NANO"
 
-  defp precision_string(:half), do: "HALF"
   defp precision_string(:single), do: "SINGLE"
   defp precision_string(:double), do: "DOUBLE"
 
@@ -192,7 +191,6 @@ defmodule Arrow.Json.Writer do
     write_column_body(base, %Field{field | type: idx_type, dictionary: nil}, indices)
   end
 
-  defp array_count(%Array.Null{length: n}), do: n
   defp array_count(%{length: n}), do: n
 
   ## ----- Null -----
@@ -202,9 +200,14 @@ defmodule Arrow.Json.Writer do
 
   ## ----- Bool -----
   defp write_column_body(base, %Field{type: %Type.Bool{}}, %Array.Bool{} = a) do
+    bools =
+      a.values
+      |> Buffer.unpack_bool_values(a.length)
+      |> Enum.map(&(&1 == 1))
+
     base
     |> Map.put("VALIDITY", validity_list(a.validity, a.length))
-    |> Map.put("DATA", Buffer.unpack_bool_values(a.values, a.length))
+    |> Map.put("DATA", bools)
   end
 
   ## ----- Int -----
@@ -336,8 +339,12 @@ defmodule Arrow.Json.Writer do
          %Field{type: %Type.FixedSizeBinary{byte_width: bw}},
          %Array.FixedSizeBinary{} = a
        ) do
+    # Bound by a.length: a foreign values buffer may carry trailing
+    # padding beyond the last slot.
+    values = binary_part(a.values, 0, a.length * bw)
+
     data =
-      for <<slot::binary-size(bw) <- a.values>>, do: Base.encode16(slot)
+      for <<slot::binary-size(bw) <- values>>, do: Base.encode16(slot)
 
     base
     |> Map.put("VALIDITY", validity_list(a.validity, a.length))

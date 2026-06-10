@@ -170,11 +170,20 @@ defmodule Arrow.Logical do
         raise(ArgumentError, "no dictionary registered for id #{id}")
 
     dict_values = to_list(dict_array, dicts)
+    dict_length = length(dict_values)
     index_list = to_list(indices, dicts)
 
     Enum.map(index_list, fn
-      nil -> nil
-      i -> Enum.at(dict_values, i)
+      nil ->
+        nil
+
+      i when i < 0 or i >= dict_length ->
+        raise ArgumentError,
+              "dictionary index #{i} out of bounds for dictionary id #{id} " <>
+                "of length #{dict_length}"
+
+      i ->
+        Enum.at(dict_values, i)
     end)
   end
 
@@ -215,9 +224,10 @@ defmodule Arrow.Logical do
 
   @doc """
   True iff a complete payload (schema + dictionaries + batches) is
-  logically equivalent to another. Tolerates differences in dictionary
-  ID assignment between the two sides: two payloads describing the
-  same data with different dictionary IDs compare equal.
+  logically equivalent to another. Dictionary encoding details are
+  not compared directly: ID assignment, dictionary entry order, and
+  unreferenced dictionary entries may all differ between the two
+  sides, provided the *resolved* per-slot values agree.
   """
   @spec payloads_equivalent?(
           %{
@@ -259,13 +269,19 @@ defmodule Arrow.Logical do
   end
 
   @doc """
-  True iff two dictionary registries are logically equivalent, given
-  the schemas referring to them.
+  True iff every dictionary-encoded field's dictionary is *resolvable*
+  in both registries, given the schemas referring to them.
 
   Walks the field tree of both schemas in parallel; for every
-  dict-encoded field pair, looks up the corresponding dictionary in
-  each registry by the *field's* ID, then compares the dictionary
-  arrays logically. ID values themselves are never compared directly.
+  dict-encoded field pair, checks that the corresponding dictionary is
+  present in each registry under the *field's* ID. ID values themselves
+  are never compared directly, and the dictionary arrays are *not*
+  compared element-wise — two payloads carrying permuted or superset
+  dictionaries with correspondingly adjusted indices encode the same
+  logical values, so the value-level comparison is left to
+  `batches_equal?/4`, which resolves indices through the registries.
+  This mirrors the official Arrow integration comparison, which
+  compares resolved values only.
   """
   @spec dictionaries_equivalent_via_schemas?(
           Arrow.Schema.t(),
@@ -278,15 +294,17 @@ defmodule Arrow.Logical do
     |> Enum.zip(sb.fields)
     |> Enum.flat_map(fn {a, b} -> field_dict_id_pairs(a, b) end)
     |> Enum.all?(fn {id_a, id_b} ->
-      case {Map.get(da, id_a), Map.get(db, id_b)} do
-        {nil, _} -> false
-        {_, nil} -> false
-        {arr_a, arr_b} -> arrays_equal?(arr_a, arr_b, da, db)
-      end
+      Map.has_key?(da, id_a) and Map.has_key?(db, id_b)
     end)
   end
 
-  @doc "Same as `arrays_equal?/2`, kept generic for both array and batch inputs."
+  @doc """
+  Registry-less logical equality. `Arrow.RecordBatch` inputs dispatch
+  to `batches_equal?/2`; any other pair of array structs dispatches to
+  `arrays_equal?/2`. Neither path takes dictionary registries, so
+  inputs containing `Arrow.Array.Dictionary` columns raise — use
+  `arrays_equal?/4` or `batches_equal?/4` with registries instead.
+  """
   @spec equal?(term(), term()) :: boolean()
   def equal?(%Arrow.RecordBatch{} = a, %Arrow.RecordBatch{} = b), do: batches_equal?(a, b)
   def equal?(a, b) when is_struct(a) and is_struct(b), do: arrays_equal?(a, b)

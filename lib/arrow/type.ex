@@ -132,11 +132,11 @@ defmodule Arrow.Type.Decimal do
   Fixed-point decimal column. Stored as a little-endian two's-complement
   integer of `bit_width` bits, scaled by `10^-scale`.
 
-  Tier 2 covers `bit_width: 128`; `256` is Tier 3.
+  All four spec widths — 32, 64, 128, and 256 bits — are supported.
   """
   defstruct [:bit_width, :precision, :scale]
 
-  @type bit_width :: 128 | 256
+  @type bit_width :: 32 | 64 | 128 | 256
   @type t :: %__MODULE__{
           bit_width: bit_width(),
           precision: pos_integer(),
@@ -270,20 +270,6 @@ defmodule Arrow.Type do
           | %LargeBinary{}
           | %LargeList{}
 
-  @doc "Returns the in-memory width in bits of a primitive numeric type."
-  @spec bit_width(t()) :: pos_integer()
-  def bit_width(%Int{bit_width: w}), do: w
-  def bit_width(%FloatingPoint{precision: :half}), do: 16
-  def bit_width(%FloatingPoint{precision: :single}), do: 32
-  def bit_width(%FloatingPoint{precision: :double}), do: 64
-  def bit_width(%Date{unit: :day}), do: 32
-  def bit_width(%Date{unit: :millisecond}), do: 64
-  def bit_width(%Timestamp{}), do: 64
-  def bit_width(%Bool{}), do: 1
-  def bit_width(%Time{bit_width: w}), do: w
-  def bit_width(%Duration{}), do: 64
-  def bit_width(%Decimal{bit_width: w}), do: w
-
   @doc """
   Returns the `Arrow.Array.*` struct module that stores values of `type`.
   Covers Int / FloatingPoint / Decimal — the types where the concrete
@@ -319,7 +305,6 @@ defmodule Arrow.Type do
   def primitive_kind(%Int{bit_width: 16, signed: false}), do: :uint16
   def primitive_kind(%Int{bit_width: 32, signed: false}), do: :uint32
   def primitive_kind(%Int{bit_width: 64, signed: false}), do: :uint64
-  def primitive_kind(%FloatingPoint{precision: :half}), do: :float32
   def primitive_kind(%FloatingPoint{precision: :single}), do: :float32
   def primitive_kind(%FloatingPoint{precision: :double}), do: :float64
 end

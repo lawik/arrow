@@ -13,5 +13,28 @@ defmodule Arrow do
     buffer layout.
   - `Arrow.Json` — Arrow integration test JSON form, used for
     cross-implementation conformance.
+
+  ## Example
+
+  Encode a record batch to the IPC streaming format and decode it back:
+
+      iex> schema = %Arrow.Schema{
+      ...>   fields: [%Arrow.Field{name: "id", type: %Arrow.Type.Int{bit_width: 32, signed: true}}]
+      ...> }
+      iex> batch = %Arrow.RecordBatch{
+      ...>   schema: schema,
+      ...>   length: 3,
+      ...>   columns: [
+      ...>     %Arrow.Array.Int32{
+      ...>       length: 3,
+      ...>       null_count: 0,
+      ...>       values: Arrow.Buffer.pack_primitive([1, 2, 3], :int32)
+      ...>     }
+      ...>   ]
+      ...> }
+      iex> stream = Arrow.Ipc.Stream.encode(schema, [batch])
+      iex> {:ok, %{batches: [decoded]}} = Arrow.Ipc.Stream.decode(stream)
+      iex> Arrow.Logical.to_list(hd(decoded.columns))
+      [1, 2, 3]
   """
 end

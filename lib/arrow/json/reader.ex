@@ -80,6 +80,10 @@ defmodule Arrow.Json.Reader do
     %Type.Int{bit_width: bw, signed: signed}
   end
 
+  defp read_type(%{"name" => "floatingpoint", "precision" => "HALF"}) do
+    raise ArgumentError, "unsupported type: floatingpoint HALF (supported: SINGLE, DOUBLE)"
+  end
+
   defp read_type(%{"name" => "floatingpoint", "precision" => p}) do
     %Type.FloatingPoint{precision: precision_atom(p)}
   end
@@ -141,7 +145,6 @@ defmodule Arrow.Json.Reader do
 
   defp read_type(other), do: raise(ArgumentError, "unsupported type: #{inspect(other)}")
 
-  defp precision_atom("HALF"), do: :half
   defp precision_atom("SINGLE"), do: :single
   defp precision_atom("DOUBLE"), do: :double
 

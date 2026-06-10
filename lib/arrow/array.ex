@@ -384,7 +384,8 @@ defmodule Arrow.Array do
   Primitive arrays carry a validity bitmap and a value buffer:
 
       %Arrow.Array.Int64{length: 3, null_count: 1,
-                         validity: <<0b101::3>>,
+                         # LSB-first: slots 0 and 2 valid, slot 1 null
+                         validity: <<0b00000101>>,
                          values:   <<1::little-signed-64,
                                      0::little-signed-64,
                                      3::little-signed-64>>}
