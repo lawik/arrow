@@ -7,16 +7,17 @@ defmodule Arrow.FixturesTest do
 
       mix test --include fixtures
 
-  Each fixture exercises `Arrow.Json.decode → encode → decode` and asserts that
-  the second decode produces the exact same in-memory structures as the first.
-  Fixtures are stored gzipped in `apache/arrow-testing`, so the harness
-  transparently inflates `.json.gz` files.
+  Each fixture exercises `Arrow.Json.decode → encode → decode` and asserts
+  that the second decode reproduces the first exactly — schema, batches, and
+  dictionary registry. Fixtures are stored gzipped in `apache/arrow-testing`,
+  so the harness transparently inflates `.json.gz` files.
 
-  Fixtures using types we haven't implemented yet (Decimal, Dictionary, Map,
-  Union, FixedSizeBinary/List, Time, Duration, Interval, LargeUtf8, ...) raise
-  `ArgumentError` inside the reader. We treat those as soft skips so the suite
-  signals *coverage* rather than failure, while genuine round-trip mismatches
-  still flunk.
+  Fixtures using types the library deliberately rejects (Union,
+  BinaryView/Utf8View, ListView, RunEndEncoded, ...) raise `ArgumentError`
+  with an "unsupported" message inside the reader; those are soft skips so
+  the suite signals *coverage* rather than failure. Any other decode error
+  flunks. When `--include fixtures` is given but the corpus is absent, the
+  placeholder test flunks rather than passing green.
   """
 
   use ExUnit.Case, async: true
@@ -25,50 +26,59 @@ defmodule Arrow.FixturesTest do
 
   @fixtures_root Path.expand("../../priv/arrow-testing", __DIR__)
 
-  @fixture_paths Path.wildcard(
-                   Path.join(@fixtures_root, "data/arrow-ipc-stream/integration/**/*.json.gz")
-                 ) ++
-                   Path.wildcard(
-                     Path.join(
-                       @fixtures_root,
-                       "data/arrow-ipc-stream/integration/**/*.json_integration"
-                     )
-                   )
+  fixture_paths =
+    Path.wildcard(Path.join(@fixtures_root, "data/arrow-ipc-stream/integration/**/*.json.gz")) ++
+      Path.wildcard(
+        Path.join(@fixtures_root, "data/arrow-ipc-stream/integration/**/*.json_integration")
+      )
 
-  if @fixture_paths == [] do
-    test "no arrow-testing fixtures present" do
-      IO.puts(:stderr, """
-
-      No fixtures found at #{@fixtures_root}.
+  if fixture_paths == [] do
+    test "arrow-testing corpus is present" do
+      flunk("""
+      `--include fixtures` was given, but no fixtures were found at
+      #{@fixtures_root}.
       Run `mix arrow.testing.fixtures` to populate it.
       """)
     end
-  end
+  else
+    for path <- fixture_paths do
+      name = Path.relative_to(path, @fixtures_root)
 
-  for path <- @fixture_paths do
-    name = Path.relative_to(path, @fixtures_root)
+      test "round-trip: #{name}" do
+        json = read_fixture(unquote(path))
 
-    test "round-trip: #{name}" do
-      json = read_fixture(unquote(path))
+        case Arrow.Json.decode(json) do
+          {:ok, %{schema: schema, dictionaries: dicts, batches: batches}} ->
+            encoded = schema |> Arrow.Json.encode(batches, dicts) |> IO.iodata_to_binary()
+            {:ok, redecoded} = Arrow.Json.decode(encoded)
+            assert redecoded.schema == schema
+            assert redecoded.batches == batches
+            assert redecoded.dictionaries == dicts
 
-      case Arrow.Json.decode(json) do
-        {:ok, %{schema: schema, batches: batches}} ->
-          encoded = schema |> Arrow.Json.encode(batches) |> IO.iodata_to_binary()
-          {:ok, redecoded} = Arrow.Json.decode(encoded)
-          assert redecoded.schema == schema
-          assert redecoded.batches == batches
+          {:error, %ArgumentError{message: msg}} ->
+            if unsupported?(msg) do
+              IO.puts(:stderr, "  ⚠ unsupported in #{unquote(name)}: #{msg}")
+            else
+              flunk("decode failed for #{unquote(name)}: #{msg}")
+            end
 
-        {:error, %ArgumentError{message: msg}} ->
-          IO.puts(:stderr, "  ⚠ unsupported in #{unquote(name)}: #{msg}")
-
-        {:error, other} ->
-          flunk("decode error for #{unquote(name)}: #{inspect(other)}")
+          {:error, other} ->
+            flunk("decode error for #{unquote(name)}: #{inspect(other)}")
+        end
       end
     end
-  end
 
-  defp read_fixture(path) do
-    bin = File.read!(path)
-    if String.ends_with?(path, ".gz"), do: :zlib.gunzip(bin), else: bin
+    defp read_fixture(path) do
+      bin = File.read!(path)
+      if String.ends_with?(path, ".gz"), do: :zlib.gunzip(bin), else: bin
+    end
+
+    # The readers raise ArgumentError both for unimplemented types and for
+    # genuine validation failures; only the former are soft skips. The
+    # unimplemented-type messages all say "unsupported" / "not yet
+    # supported" (see lib/arrow/json/reader.ex, lib/arrow/ipc/metadata.ex).
+    defp unsupported?(msg) do
+      msg =~ "unsupported" or msg =~ "not yet supported"
+    end
   end
 end

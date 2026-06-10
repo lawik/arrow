@@ -11,18 +11,21 @@ defmodule Arrow.Ipc.StreamFixturesTest do
   - batches by null-aware logical equality (`Arrow.Logical.batches_equal?/2`),
     which compares per-slot logical values while ignoring byte
     differences at null positions or in validity-bitmap padding.
+
+  Decode failures are soft skips only when the library rejects a type as
+  unsupported; any other failure flunks. When `--include fixtures` is
+  given but the corpus is absent, the placeholder test flunks rather than
+  passing green.
   """
 
   use ExUnit.Case, async: true
 
-  alias Arrow.Ipc.Stream
-
   @moduletag :fixtures
 
   @fixtures_root Path.expand("../../../priv/arrow-testing", __DIR__)
-  @fixture_dirs Path.wildcard(
-                  Path.join(@fixtures_root, "data/arrow-ipc-stream/integration/*-littleendian")
-                )
+
+  fixture_dirs =
+    Path.wildcard(Path.join(@fixtures_root, "data/arrow-ipc-stream/integration/*-littleendian"))
 
   # Fixtures with intentional upstream divergence between `.stream` and
   # `.json.gz` that we *don't* normalize away. Not bugs on our side; the
@@ -31,58 +34,63 @@ defmodule Arrow.Ipc.StreamFixturesTest do
   # - generated_map_non_canonical: the IPC producer canonicalizes the Map
   #   entries child name to "entries" while the JSON fixture deliberately
   #   keeps a non-standard name.
-  @upstream_divergent [
+  upstream_divergent = [
     "generated_map_non_canonical.stream"
   ]
 
-  @stream_paths @fixture_dirs
-                |> Enum.flat_map(&Path.wildcard(Path.join(&1, "*.stream")))
-                |> Enum.reject(fn p ->
-                  Enum.any?(@upstream_divergent, &String.ends_with?(p, &1))
-                end)
+  stream_paths =
+    fixture_dirs
+    |> Enum.flat_map(&Path.wildcard(Path.join(&1, "*.stream")))
+    |> Enum.reject(fn p ->
+      Enum.any?(upstream_divergent, &String.ends_with?(p, &1))
+    end)
 
-  if @stream_paths == [] do
-    test "no arrow-testing fixtures present" do
-      IO.puts(:stderr, """
-
-      No fixtures found under #{@fixtures_root}.
+  if stream_paths == [] do
+    test "arrow-testing corpus is present" do
+      flunk("""
+      `--include fixtures` was given, but no fixtures were found under
+      #{@fixtures_root}.
       Run `mix arrow.testing.fixtures` to populate it.
       """)
     end
-  end
+  else
+    for path <- stream_paths do
+      name = Path.relative_to(path, @fixtures_root)
+      json_path = String.replace_suffix(path, ".stream", ".json.gz")
 
-  for path <- @stream_paths do
-    name = Path.relative_to(path, @fixtures_root)
-    json_path = String.replace_suffix(path, ".stream", ".json.gz")
+      test "stream ↔ json logically equal: #{name}" do
+        stream_bin = File.read!(unquote(path))
+        json_bin = unquote(json_path) |> File.read!() |> :zlib.gunzip()
 
-    test "stream ↔ json logically equal: #{name}" do
-      stream_bin = File.read!(unquote(path))
-      json_bin = unquote(json_path) |> File.read!() |> :zlib.gunzip()
-
-      with {:ok, from_stream} <- safe_decode(:stream, stream_bin),
-           {:ok, from_json} <- safe_decode(:json, json_bin) do
-        assert Arrow.Logical.payloads_equivalent?(from_stream, from_json),
-               "payloads diverged between .stream and .json.gz for #{unquote(name)}"
-      else
-        {:skip, msg} ->
-          IO.puts(:stderr, "  ⚠ skipped #{unquote(name)}: #{msg}")
+        with {:ok, from_stream} <- safe_decode(:stream, stream_bin),
+             {:ok, from_json} <- safe_decode(:json, json_bin) do
+          assert Arrow.Logical.payloads_equivalent?(from_stream, from_json),
+                 "payloads diverged between .stream and .json.gz for #{unquote(name)}"
+        else
+          {:skip, msg} ->
+            IO.puts(:stderr, "  ⚠ skipped #{unquote(name)}: #{msg}")
+        end
       end
     end
-  end
 
-  defp safe_decode(:stream, bin) do
-    case Stream.decode(bin) do
-      {:ok, result} -> {:ok, result}
-      {:error, %ArgumentError{message: msg}} -> {:skip, "stream: #{msg}"}
-      {:error, other} -> flunk("stream decode crashed: #{inspect(other)}")
-    end
-  end
+    defp safe_decode(:stream, bin), do: classify(:stream, Arrow.Ipc.Stream.decode(bin))
+    defp safe_decode(:json, bin), do: classify(:json, Arrow.Json.decode(bin))
 
-  defp safe_decode(:json, bin) do
-    case Arrow.Json.decode(bin) do
-      {:ok, result} -> {:ok, result}
-      {:error, %ArgumentError{message: msg}} -> {:skip, "json: #{msg}"}
-      {:error, other} -> flunk("json decode crashed: #{inspect(other)}")
+    defp classify(source, result) do
+      case result do
+        {:ok, payload} ->
+          {:ok, payload}
+
+        {:error, %ArgumentError{message: msg}} ->
+          if msg =~ "unsupported" or msg =~ "not yet supported" do
+            {:skip, "#{source}: #{msg}"}
+          else
+            flunk("#{source} decode failed: #{msg}")
+          end
+
+        {:error, other} ->
+          flunk("#{source} decode crashed: #{inspect(other)}")
+      end
     end
   end
 end
