@@ -7,10 +7,10 @@ defmodule Mix.Tasks.Arrow.Integration.Validate do
       mix arrow.integration.validate --json <path> --arrow <path>
 
   Decodes both inputs through our pipeline and asserts they're
-  logically equivalent via `Arrow.Logical.batches_equal?/2`. Exits 0
-  on success, raises a `Mix.Error` (non-zero exit) with a brief diff
-  on mismatch. Used by archery's cross-language test runner (via the
-  binary shim under `bin/`).
+  logically equivalent via `Arrow.Logical.payloads_equivalent?/2`.
+  Exits 0 on success, raises a `Mix.Error` (non-zero exit) with a
+  brief diff on mismatch. Used by archery's cross-language test
+  runner (via the binary shim under `bin/`).
   """
 
   use Mix.Task
@@ -19,21 +19,22 @@ defmodule Mix.Tasks.Arrow.Integration.Validate do
 
   @impl Mix.Task
   def run(argv) do
-    {opts, _, _} = OptionParser.parse(argv, strict: [json: :string, arrow: :string])
+    {opts, _} = OptionParser.parse!(argv, strict: [json: :string, arrow: :string])
 
     json_path = Keyword.get(opts, :json) || Mix.raise("--json <path> is required")
     arrow_path = Keyword.get(opts, :arrow) || Mix.raise("--arrow <path> is required")
 
-    {:ok, from_json} =
+    from_json =
       json_path
       |> File.read!()
-      |> maybe_gunzip()
       |> Arrow.Json.decode()
+      |> ok_or_raise(json_path)
 
-    {:ok, from_arrow} =
+    from_arrow =
       arrow_path
       |> File.read!()
       |> IpcFile.decode()
+      |> ok_or_raise(arrow_path)
 
     if Arrow.Logical.payloads_equivalent?(from_json, from_arrow) do
       Mix.shell().info("ok: #{json_path} ↔ #{arrow_path}")
@@ -41,6 +42,13 @@ defmodule Mix.Tasks.Arrow.Integration.Validate do
       Mix.raise(diff_message(from_json, from_arrow, json_path, arrow_path))
     end
   end
+
+  defp ok_or_raise({:ok, payload}, _path), do: payload
+
+  defp ok_or_raise({:error, e}, path) when is_exception(e),
+    do: Mix.raise("failed to decode #{path}: #{Exception.message(e)}")
+
+  defp ok_or_raise({:error, e}, path), do: Mix.raise("failed to decode #{path}: #{inspect(e)}")
 
   defp diff_message(from_json, from_arrow, json_path, arrow_path) do
     cond do
@@ -55,7 +63,4 @@ defmodule Mix.Tasks.Arrow.Integration.Validate do
         "data mismatch between #{json_path} and #{arrow_path}"
     end
   end
-
-  defp maybe_gunzip(<<0x1F, 0x8B, _::binary>> = bin), do: :zlib.gunzip(bin)
-  defp maybe_gunzip(bin), do: bin
 end

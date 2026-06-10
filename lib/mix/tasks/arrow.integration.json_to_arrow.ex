@@ -6,10 +6,11 @@ defmodule Mix.Tasks.Arrow.Integration.JsonToArrow do
 
       mix arrow.integration.json_to_arrow --json <path> --arrow <path>
 
-  Reads the JSON fixture at `--json`, decodes it via `Arrow.Json`,
-  encodes the schema + batches via `Arrow.Ipc.File`, and writes the
-  result to `--arrow`. Used by archery's cross-language test runner
-  (via the binary shim under `bin/`).
+  Reads the JSON fixture at `--json` (gzipped or plain), decodes it via
+  `Arrow.Json`, encodes the schema + dictionaries + batches via
+  `Arrow.Ipc.File`, and writes the result to `--arrow`. Used by
+  archery's cross-language test runner (via the binary shim under
+  `bin/`).
   """
 
   use Mix.Task
@@ -18,24 +19,28 @@ defmodule Mix.Tasks.Arrow.Integration.JsonToArrow do
 
   @impl Mix.Task
   def run(argv) do
-    {opts, _, _} = OptionParser.parse(argv, strict: [json: :string, arrow: :string])
+    {opts, _} = OptionParser.parse!(argv, strict: [json: :string, arrow: :string])
 
     json_path = Keyword.get(opts, :json) || Mix.raise("--json <path> is required")
     arrow_path = Keyword.get(opts, :arrow) || Mix.raise("--arrow <path> is required")
 
-    {:ok, %{schema: schema, batches: batches}} =
+    %{schema: schema, dictionaries: dicts, batches: batches} =
       json_path
       |> File.read!()
-      |> maybe_gunzip()
       |> Arrow.Json.decode()
+      |> ok_or_raise(json_path)
 
     arrow_path
     |> Path.dirname()
     |> File.mkdir_p!()
 
-    File.write!(arrow_path, IpcFile.encode(schema, batches))
+    File.write!(arrow_path, IpcFile.encode(schema, batches, dicts))
   end
 
-  defp maybe_gunzip(<<0x1F, 0x8B, _::binary>> = bin), do: :zlib.gunzip(bin)
-  defp maybe_gunzip(bin), do: bin
+  defp ok_or_raise({:ok, payload}, _path), do: payload
+
+  defp ok_or_raise({:error, e}, path) when is_exception(e),
+    do: Mix.raise("failed to decode #{path}: #{Exception.message(e)}")
+
+  defp ok_or_raise({:error, e}, path), do: Mix.raise("failed to decode #{path}: #{inspect(e)}")
 end

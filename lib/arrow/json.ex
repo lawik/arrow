@@ -17,6 +17,10 @@ defmodule Arrow.Json do
   @doc """
   Reads a JSON document (or in-memory map) into a schema, dictionaries
   registry, and list of record batches.
+
+  Gzipped input (the arrow-testing fixtures ship as `.json.gz`) is
+  detected via the gzip magic bytes and decompressed transparently;
+  the magic can never start a valid JSON document.
   """
   @spec decode(binary() | map()) ::
           {:ok,
@@ -26,6 +30,12 @@ defmodule Arrow.Json do
              batches: [Arrow.RecordBatch.t()]
            }}
           | {:error, term()}
+  def decode(<<0x1F, 0x8B, _::binary>> = gzipped) do
+    decode(:zlib.gunzip(gzipped))
+  rescue
+    e in ErlangError -> {:error, e}
+  end
+
   def decode(json) when is_binary(json) do
     with {:ok, decoded} <- Jason.decode(json) do
       decode(decoded)
