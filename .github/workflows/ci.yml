@@ -1,0 +1,230 @@
+# CI for arrow.
+#
+# Five jobs:
+#
+#   lint        — compile (warnings as errors), format, credo, unused
+#                 deps, hex.audit, spellcheck. The `mix check` alias
+#                 minus dialyzer, split into steps for readable failures.
+#   test        — `mix test` with NO corpus: the fresh-clone experience.
+#   conformance — pinned apache/arrow-testing corpus (cached) and
+#                 `mix test --include fixtures`.
+#   dialyzer    — success typing, with the PLT cached.
+#   archery     — upstream `archery integration` driving the bin/ shims
+#                 as producer and consumer against the gold files.
+#
+# ARROW_TESTING_REVISION must match @revision in
+# lib/mix/tasks/arrow.testing.fixtures.ex — bump the cache key when
+# bumping the pin. ARROW_UPSTREAM_REVISION is the apache/arrow commit
+# integration/archery-elixir.patch was verified against (see
+# integration/README.md).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  ELIXIR_VERSION: "1.19"
+  OTP_VERSION: "28"
+  ARROW_TESTING_REVISION: "9cfebfef8982fb8612e0a2c59059752bd32321a3"
+  ARROW_UPSTREAM_REVISION: "ca47cd10b651a8ff5fe44fbb23f7e01dc982a57d"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up BEAM
+        id: beam
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - name: Cache deps and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: lint-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            lint-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-
+
+      - run: mix deps.get
+      - run: mix hex.audit
+      - run: mix compile --warnings-as-errors --force
+      - run: mix format --check-formatted
+      - run: mix credo
+      - run: mix deps.unlock --check-unused
+      - run: mix spellweaver.check
+
+  test:
+    # No corpus: the suite must still pass on a fresh clone, with the
+    # fixture tiers excluded by default.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up BEAM
+        id: beam
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - name: Cache deps and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: test-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            test-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-
+
+      - run: mix deps.get
+      - run: mix test
+
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up BEAM
+        id: beam
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - name: Cache deps and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: test-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            test-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-
+
+      - name: Cache arrow-testing corpus
+        uses: actions/cache@v4
+        with:
+          path: priv/arrow-testing
+          key: arrow-testing-${{ env.ARROW_TESTING_REVISION }}
+
+      - run: mix deps.get
+
+      # Idempotent no-op when the cache hits (the task checks the pin).
+      - name: Fetch arrow-testing corpus
+        run: MIX_ENV=test mix arrow.testing.fixtures
+
+      - run: mix test --include fixtures
+
+  dialyzer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up BEAM
+        id: beam
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - name: Cache deps and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: dialyzer-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            dialyzer-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-
+
+      # Dialyxir keeps its PLTs in _build/dev by default; cache them on
+      # the BEAM versions + lockfile so PLT construction (the slow part)
+      # only reruns when those change.
+      - name: Cache PLTs
+        uses: actions/cache@v4
+        with:
+          path: _build/dev/*.plt*
+          key: plt-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            plt-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-
+
+      - run: mix deps.get
+      - run: mix dialyzer
+
+  archery:
+    # Cross-language integration via upstream archery, per
+    # integration/README.md. The shims run `mix` in :dev, so this job
+    # compiles dev (including the flatbuf git dep).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up BEAM
+        id: beam
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - name: Cache deps and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: archery-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            archery-${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-
+
+      - name: Cache arrow-testing corpus
+        uses: actions/cache@v4
+        with:
+          path: priv/arrow-testing
+          key: arrow-testing-${{ env.ARROW_TESTING_REVISION }}
+
+      - run: mix deps.get
+      - run: mix compile
+
+      - name: Fetch arrow-testing corpus (gold files)
+        run: MIX_ENV=test mix arrow.testing.fixtures
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check out apache/arrow (dev/archery only)
+        uses: actions/checkout@v4
+        with:
+          repository: apache/arrow
+          ref: ${{ env.ARROW_UPSTREAM_REVISION }}
+          path: arrow-upstream
+          fetch-depth: 1
+          sparse-checkout: dev/archery
+
+      - name: Install archery
+        run: pip install -e 'arrow-upstream/dev/archery[integration]'
+
+      - name: Wire in the Elixir tester
+        run: |
+          cp integration/tester_elixir.py arrow-upstream/dev/archery/archery/integration/
+          git -C arrow-upstream apply "$GITHUB_WORKSPACE/integration/archery-elixir.patch"
+
+      - name: Run archery integration
+        run: |
+          GOLD=$GITHUB_WORKSPACE/priv/arrow-testing/data/arrow-ipc-stream/integration
+          ARROW_ELIXIR_PATH=$GITHUB_WORKSPACE archery integration --run-ipc --with-elixir=1 \
+            --gold-dirs=$GOLD/0.17.1 \
+            --gold-dirs=$GOLD/1.0.0-littleendian \
+            --gold-dirs=$GOLD/4.0.0-shareddict \
+            --gold-dirs=$GOLD/cpp-21.0.0
