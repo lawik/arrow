@@ -21,17 +21,22 @@
     "assets",
     "mix.exs",
     "priv",
-    "test"
+    "test",
+    "REVIEW.md"
   ],
   "words": [
+    "bigendian",
     "fixedsizebinary",
     "fixedsizelist",
+    "flatbuf",
     "flatbuffer",
     "flatbuffers",
     "floatingpoint",
+    "foobarbaz",
     "nanoarrow",
     "parameterises",
     "prec",
+    "pyarrow",
     "unzoned"
   ]
 }

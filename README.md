@@ -2,7 +2,7 @@
 
 Pure-Elixir [Apache Arrow](https://arrow.apache.org/). Verified
 round-trip against the upstream `arrow-testing` cross-language fixture
-corpus.
+corpus, with pyarrow-produced golden files in the default test suite.
 
 ## Install
 
@@ -10,8 +10,10 @@ corpus.
 {:arrow, "~> 0.1.0"}
 ```
 
-`:flatbuf` is a `:dev` dependency only — used once to regenerate the
-metadata codec from `.fbs` sources. Generated code is dependency-free.
+`:flatbuf` is a `:dev`-only path dependency — used once to regenerate
+the metadata codec from the vendored `.fbs` sources. Generated code is
+dependency-free; without a local `flatbuf` checkout, compile and test
+under `MIX_ENV=test`.
 
 ## Use
 
@@ -68,9 +70,12 @@ mix arrow.integration.arrow_to_json --arrow file.arrow --json out.json
 mix arrow.integration.validate     --json fixture.json --arrow file.arrow
 ```
 
-Run the fixture harness:
+Run the tests:
 
 ```sh
+mix test                          # always-run suite, incl. golden decode
+                                  # tests against pyarrow-produced IPC
+                                  # files (test/golden/)
 mix arrow.testing.fixtures        # one-time: clone apache/arrow-testing
 mix test --include fixtures       # cross-language conformance suite
 ```
@@ -93,9 +98,17 @@ RecordBatch + DictionaryBatch messages, end-of-stream markers.
 - Little-endian only. The `Schema.endianness` field is decoded but
   big-endian column buffers will silently misread. Filter the
   `*-bigendian` arrow-testing fixtures or convert upstream.
+- IPC body compression (`LZ4_FRAME` / `ZSTD`) is unsupported and
+  currently undetected: compressed input is silently misread, not
+  rejected.
 - Union (sparse + dense), `BinaryView` / `Utf8View`,
-  `ListView` / `LargeListView`, `RunEndEncoded`, and `Float16` are
-  rejected on decode and absent from the data model.
+  `ListView` / `LargeListView`, and `RunEndEncoded` are rejected on
+  decode and absent from the data model. `Float16` is also unsupported,
+  but fails with an opaque error after schema decode rather than a
+  clean rejection.
+- The `mix arrow.integration.*` CLI tasks do not pass dictionaries
+  through: dictionary-encoded fixtures produce invalid output via the
+  CLI even though `Arrow.Json` and `Arrow.Ipc.*` support them.
 - Tensor and SparseTensor messages are out of scope for the IPC reader.
 - Delta `DictionaryBatch` messages are rejected.
 - `force_align` and `(vector64)` follow flatbuf's coverage, not ours.
