@@ -22,14 +22,14 @@ defmodule Arrow.Ipc.Stream do
   A well-formed Arrow stream is:
 
       <Schema message>
-      <RecordBatch message>
-      <RecordBatch message>
-      ...
+      <DictionaryBatch message>   (zero or more)
+      <RecordBatch message>       (zero or more)
       <EOS>
 
-  DictionaryBatch messages (Tier 2) and footer interactions (file format)
-  are out of scope here — they belong to `Arrow.Ipc.File` and the
-  dictionary plumbing once that lands.
+  DictionaryBatch messages are decoded into the result's `dictionaries`
+  registry (delta dictionaries are rejected). Footer interactions belong
+  to the file format — see `Arrow.Ipc.File`, which reuses the frame
+  builders exposed here.
   """
 
   alias Arrow.Ipc.{Body, Flatbuf, Metadata}
@@ -50,6 +50,7 @@ defmodule Arrow.Ipc.Stream do
         ) :: binary()
   def encode(%Arrow.Schema{} = schema, batches, dictionaries \\ %{})
       when is_list(batches) and is_map(dictionaries) do
+    validate_dictionaries!(schema, dictionaries)
     schema_frame = encode_schema_message(schema)
     dict_frames = encode_dictionary_messages(schema, dictionaries)
     batch_frames = Enum.map(batches, &encode_record_batch_message/1)
@@ -90,8 +91,7 @@ defmodule Arrow.Ipc.Stream do
   @spec schema_message_frame(Arrow.Schema.t()) :: {iodata(), non_neg_integer()}
   def schema_message_frame(%Arrow.Schema{} = schema) do
     metadata = build_message_metadata({:Schema, Metadata.schema_to_fb_map(schema)}, 0)
-    {iodata, meta_len} = frame(metadata, <<>>)
-    {iodata, meta_len}
+    frame(metadata, <<>>)
   end
 
   @doc """
@@ -145,6 +145,43 @@ defmodule Arrow.Ipc.Stream do
   """
   @spec eos() :: binary()
   def eos(), do: <<@continuation::little-32, 0::little-signed-32>>
+
+  @doc """
+  Validates the schema ↔ dictionaries registry pairing before encoding:
+  every dictionary-encoded field in `schema` must have an entry for its
+  id in `dictionaries`, or the output would reference a dictionary that
+  is never written (spec-invalid). Raises `ArgumentError` otherwise.
+
+  The converse direction (registry id with no referencing field) is
+  checked where the DictionaryBatch messages are emitted.
+
+  Exposed for `Arrow.Ipc.File`, which builds its frames directly.
+  """
+  @spec validate_dictionaries!(Arrow.Schema.t(), %{
+          optional(non_neg_integer()) => Arrow.Array.t()
+        }) :: :ok
+  def validate_dictionaries!(%Arrow.Schema{fields: fields}, dictionaries)
+      when is_map(dictionaries) do
+    fields
+    |> collect_dictionary_ids([])
+    |> Enum.each(fn id ->
+      Map.has_key?(dictionaries, id) ||
+        raise(
+          ArgumentError,
+          "dictionary-encoded field references id #{id}, " <>
+            "but the dictionaries registry has no entry for it"
+        )
+    end)
+
+    :ok
+  end
+
+  defp collect_dictionary_ids(fields, acc) do
+    Enum.reduce(fields, acc, fn %Arrow.Field{dictionary: dict, children: children}, ids ->
+      ids = if dict, do: [dict.id | ids], else: ids
+      collect_dictionary_ids(children, ids)
+    end)
+  end
 
   defp encode_schema_message(%Arrow.Schema{} = schema) do
     {iodata, _meta_len} = schema_message_frame(schema)
@@ -247,11 +284,12 @@ defmodule Arrow.Ipc.Stream do
 
     <<body::binary-size(body_len), after_body::binary>> = after_metadata
 
-    dispatch_message(fb_message, body, after_body, schema, dicts, batches)
+    handle_header(fb_message.header, body, after_body, schema, dicts, batches)
   end
 
-  defp dispatch_message(fb_message, body, rest, schema, dicts, batches) do
-    handle_header(fb_message.header, body, rest, schema, dicts, batches)
+  defp handle_header({:Schema, _}, _body, _rest, schema, _dicts, _batches)
+       when schema != nil do
+    raise ArgumentError, "duplicate Schema message mid-stream"
   end
 
   defp handle_header({:Schema, fb_schema}, _body, rest, _schema, dicts, batches) do
@@ -261,9 +299,10 @@ defmodule Arrow.Ipc.Stream do
   defp handle_header({:RecordBatch, fb_rb}, body, rest, schema, dicts, batches) do
     if schema == nil, do: raise(ArgumentError, "RecordBatch message before Schema")
 
-    nodes = Enum.map(fb_rb.nodes, fn n -> %{length: n.length, null_count: n.null_count} end)
-    buffers = Enum.map(fb_rb.buffers, fn b -> %{offset: b.offset, length: b.length} end)
-    batch = Body.decode(schema, fb_rb.length, nodes, buffers, body)
+    %{length: length, nodes: nodes, buffers: buffers} =
+      Metadata.record_batch_descriptors(fb_rb)
+
+    batch = Body.decode(schema, length, nodes, buffers, body)
     do_decode(rest, schema, dicts, [batch | batches])
   end
 
@@ -275,8 +314,7 @@ defmodule Arrow.Ipc.Stream do
       Arrow.Field.find_by_dictionary_id(schema, fb_db.id) ||
         raise(ArgumentError, "DictionaryBatch references unknown id #{fb_db.id}")
 
-    nodes = Enum.map(fb_db.data.nodes, fn n -> %{length: n.length, null_count: n.null_count} end)
-    buffers = Enum.map(fb_db.data.buffers, fn b -> %{offset: b.offset, length: b.length} end)
+    %{nodes: nodes, buffers: buffers} = Metadata.record_batch_descriptors(fb_db.data)
     array = Body.decode_array_buffers(Arrow.Field.value_field(field), nodes, buffers, body)
     do_decode(rest, schema, Map.put(dicts, fb_db.id, array), batches)
   end

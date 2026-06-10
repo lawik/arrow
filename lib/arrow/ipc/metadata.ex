@@ -12,16 +12,16 @@ defmodule Arrow.Ipc.Metadata do
   ## Current coverage
 
   - `encode_schema/1` and `decode_schema/1` — the Schema FlatBuffers root.
-    Covers every Tier 1 + Tier 2 logical type. Tier 3 variants
-    (`LargeBinary`, `LargeUtf8`, `LargeList`, `LargeListView`, `ListView`,
-    `BinaryView`, `Utf8View`, `RunEndEncoded`, `Union`, `Interval`) raise
-    `ArgumentError` until they're added to `Arrow.Type.*`.
-  - Dictionary-encoded fields are rejected on decode; encode raises if a
-    field carries dictionary metadata. We don't yet model dictionary
-    encoding in `Arrow.Field`.
-
-  Forthcoming: `encode_record_batch/2` / `decode_record_batch/2` for the
-  RecordBatch metadata table, plus the Message envelope.
+    Covers every Tier 1 + Tier 2 logical type plus `LargeUtf8`,
+    `LargeBinary`, `LargeList`, and `Interval`. The remaining variants
+    (`LargeListView`, `ListView`, `BinaryView`, `Utf8View`,
+    `RunEndEncoded`, `Union`, and `Float16`) raise `ArgumentError` until
+    they're added to `Arrow.Type.*`.
+  - Dictionary-encoded fields round-trip through
+    `Arrow.Field.dictionary` / `Arrow.Type.DictionaryEncoding`.
+  - `encode_record_batch/1` and `decode_record_batch/3` cover the
+    RecordBatch metadata table; the Message envelope and stream framing
+    live in `Arrow.Ipc.Stream`.
   """
 
   alias Arrow.Ipc.{Body, Flatbuf}
@@ -103,13 +103,42 @@ defmodule Arrow.Ipc.Metadata do
       when is_binary(metadata) and is_binary(body) do
     pos = Wire.root_table_pos(metadata)
     fb = Flatbuf.RecordBatch.decode_at(metadata, pos)
+    %{length: length, nodes: nodes, buffers: buffers} = record_batch_descriptors(fb)
 
-    nodes = Enum.map(fb.nodes, fn n -> %{length: n.length, null_count: n.null_count} end)
-    buffers = Enum.map(fb.buffers, fn b -> %{offset: b.offset, length: b.length} end)
-
-    {:ok, Body.decode(schema, fb.length, nodes, buffers, body)}
+    {:ok, Body.decode(schema, length, nodes, buffers, body)}
   rescue
     e -> {:error, e}
+  end
+
+  @doc """
+  Extracts the plain `length` / `nodes` / `buffers` descriptors from a
+  decoded `Arrow.Ipc.Flatbuf.RecordBatch`.
+
+  This is the single choke point through which every IPC consumer reads
+  RecordBatch metadata — stream RecordBatch and DictionaryBatch messages
+  as well as file batch and dictionary Blocks — so format features the
+  body decoder cannot honor are rejected in exactly one place rather
+  than silently misread.
+
+  Raises `ArgumentError` when the batch declares body compression.
+  """
+  @spec record_batch_descriptors(Flatbuf.RecordBatch.t()) :: %{
+          length: non_neg_integer(),
+          nodes: [Body.node_desc()],
+          buffers: [Body.buffer_desc()]
+        }
+  def record_batch_descriptors(%Flatbuf.RecordBatch{compression: %Flatbuf.BodyCompression{} = c}) do
+    raise ArgumentError,
+          "unsupported: compressed record batch body " <>
+            "(codec #{inspect(c.codec)}, method #{inspect(c.method)})"
+  end
+
+  def record_batch_descriptors(%Flatbuf.RecordBatch{} = fb) do
+    %{
+      length: fb.length,
+      nodes: Enum.map(fb.nodes, fn n -> %{length: n.length, null_count: n.null_count} end),
+      buffers: Enum.map(fb.buffers, fn b -> %{offset: b.offset, length: b.length} end)
+    }
   end
 
   ## ---------------------------------------------------------------------
@@ -140,6 +169,11 @@ defmodule Arrow.Ipc.Metadata do
       custom_metadata: metadata_to_fb(metadata),
       features: []
     }
+  end
+
+  defp from_fb_schema(%Flatbuf.Schema{endianness: :Big}) do
+    raise ArgumentError,
+          "unsupported: big-endian schema (buffer contents would require byte-swapping)"
   end
 
   defp from_fb_schema(%Flatbuf.Schema{fields: fields, custom_metadata: cm}) do
@@ -266,6 +300,10 @@ defmodule Arrow.Ipc.Metadata do
     %Arrow.Type.Int{bit_width: bw, signed: signed}
   end
 
+  defp type_from_fb({:FloatingPoint, %Flatbuf.FloatingPoint{precision: :HALF}}) do
+    raise ArgumentError, "unsupported FB type variant: FloatingPoint HALF (Float16)"
+  end
+
   defp type_from_fb({:FloatingPoint, %Flatbuf.FloatingPoint{precision: p}}) do
     %Arrow.Type.FloatingPoint{precision: from_fb_precision(p)}
   end
@@ -336,7 +374,7 @@ defmodule Arrow.Ipc.Metadata do
   defp fb_precision(:single), do: :SINGLE
   defp fb_precision(:double), do: :DOUBLE
 
-  defp from_fb_precision(:HALF), do: :half
+  # :HALF is rejected in type_from_fb/1 before reaching this mapping.
   defp from_fb_precision(:SINGLE), do: :single
   defp from_fb_precision(:DOUBLE), do: :double
 

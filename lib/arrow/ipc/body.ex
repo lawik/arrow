@@ -35,7 +35,6 @@ defmodule Arrow.Ipc.Body do
   """
 
   alias Arrow.{Array, Field, RecordBatch, Schema}
-  alias Arrow.Buffer, as: Buf
 
   @alignment 8
 
@@ -313,9 +312,23 @@ defmodule Arrow.Ipc.Body do
   end
 
   defp push_buffer({ns, bs, body, off}, bin, len) do
-    pad = padding(len)
-    new_body = [body, bin, <<0::size(pad * 8)>>]
-    {ns, [%{offset: off, length: len} | bs], new_body, off + len + pad}
+    # The descriptor records `len` and the walk advances by `len + pad`,
+    # so the appended bytes must be exactly `len` or every subsequent
+    # buffer offset desynchronizes. Oversized binaries are spec-legal
+    # (e.g. alignment padding retained on a decoded foreign bitmap) and
+    # are truncated; undersized ones are a hard error.
+    case byte_size(bin) do
+      size when size < len ->
+        raise ArgumentError,
+              "buffer is #{size} bytes but its descriptor declares #{len}; " <>
+                "refusing to encode a desynchronized body"
+
+      size ->
+        data = if size > len, do: binary_part(bin, 0, len), else: bin
+        pad = padding(len)
+        new_body = [body, data, <<0::size(pad * 8)>>]
+        {ns, [%{offset: off, length: len} | bs], new_body, off + len + pad}
+    end
   end
 
   defp bitmap_size(length), do: div(length + 7, 8)
@@ -649,10 +662,11 @@ defmodule Arrow.Ipc.Body do
 
   defp take_validity(_body, _b, _row_count, 0), do: nil
 
-  defp take_validity(_body, %{length: 0}, row_count, _null_count) do
-    # Producer omitted validity (zero-length buffer). Treat as all-valid.
-    {bitmap, _} = Buf.pack_validity(List.duplicate(1, row_count))
-    bitmap
+  defp take_validity(_body, %{length: 0}, _row_count, null_count) do
+    # null_count is non-zero here (the clause above catches 0), so a
+    # zero-length validity buffer contradicts the FieldNode's claim.
+    raise ArgumentError,
+          "validity buffer has zero declared length but the node claims #{null_count} nulls"
   end
 
   defp take_validity(body, %{offset: off, length: len}, _row_count, _null_count) do
@@ -663,9 +677,11 @@ defmodule Arrow.Ipc.Body do
     binary_part(body, off, len)
   end
 
+  defp take_bitmap(_body, %{length: 0}, 0), do: <<>>
+
   defp take_bitmap(_body, %{length: 0}, row_count) do
-    {bitmap, _} = Buf.pack_validity(List.duplicate(1, row_count))
-    bitmap
+    raise ArgumentError,
+          "Bool values buffer has zero declared length but the node claims #{row_count} rows"
   end
 
   defp take_slice(body, %{offset: off, length: len}) do

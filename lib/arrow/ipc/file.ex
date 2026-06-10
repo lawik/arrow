@@ -29,13 +29,15 @@ defmodule Arrow.Ipc.File do
     value *includes* the 8-byte prefix.
   - `bodyLength` — the raw body byte count after the metadata.
 
-  ## Limitations (today)
+  ## Notes
 
-  - No dictionary support; the `dictionaries` Block list in the Footer
-    is always written empty and rejected on decode.
+  - Dictionaries are written as DictionaryBatch messages between the
+    Schema and the record batches, with Block descriptors recorded in
+    the Footer's `dictionaries` list; decode reads them back through
+    those Blocks (delta dictionaries are rejected).
   - The Schema appears once in the inline stream prefix and again in
-    the Footer. We treat the inline stream's Schema as authoritative on
-    decode; we do not currently cross-check it against the Footer's.
+    the Footer. Decode uses *only* the Footer's copy — the inline
+    stream prefix is never parsed — and does not cross-check the two.
   """
 
   alias Arrow.Ipc.{Body, Flatbuf, Metadata, Stream}
@@ -44,6 +46,7 @@ defmodule Arrow.Ipc.File do
   @magic "ARROW1\0\0"
   @magic_suffix "ARROW1"
   @version :V5
+  @continuation 0xFFFFFFFF
 
   ## ---------------------------------------------------------------------
   ## Encode
@@ -60,6 +63,7 @@ defmodule Arrow.Ipc.File do
         ) :: binary()
   def encode(%Arrow.Schema{} = schema, batches, dictionaries \\ %{})
       when is_list(batches) and is_map(dictionaries) do
+    Stream.validate_dictionaries!(schema, dictionaries)
     {schema_frame, _schema_meta_len} = Stream.schema_message_frame(schema)
     schema_frame_bin = IO.iodata_to_binary(schema_frame)
 
@@ -190,9 +194,10 @@ defmodule Arrow.Ipc.File do
 
     case fb_message.header do
       {:RecordBatch, fb_rb} ->
-        nodes = Enum.map(fb_rb.nodes, fn n -> %{length: n.length, null_count: n.null_count} end)
-        buffers = Enum.map(fb_rb.buffers, fn b -> %{offset: b.offset, length: b.length} end)
-        Body.decode(schema, fb_rb.length, nodes, buffers, body)
+        %{length: length, nodes: nodes, buffers: buffers} =
+          Metadata.record_batch_descriptors(fb_rb)
+
+        Body.decode(schema, length, nodes, buffers, body)
 
       other ->
         raise ArgumentError, "file Block points at non-RecordBatch message: #{inspect(other)}"
@@ -212,12 +217,7 @@ defmodule Arrow.Ipc.File do
           Arrow.Field.find_by_dictionary_id(schema, fb_db.id) ||
             raise(ArgumentError, "DictionaryBatch references unknown id #{fb_db.id}")
 
-        nodes =
-          Enum.map(fb_db.data.nodes, fn n -> %{length: n.length, null_count: n.null_count} end)
-
-        buffers =
-          Enum.map(fb_db.data.buffers, fn b -> %{offset: b.offset, length: b.length} end)
-
+        %{nodes: nodes, buffers: buffers} = Metadata.record_batch_descriptors(fb_db.data)
         array = Body.decode_array_buffers(Arrow.Field.value_field(field), nodes, buffers, body)
         {fb_db.id, array}
 
@@ -232,8 +232,15 @@ defmodule Arrow.Ipc.File do
     body_len = block.bodyLength
     meta_bytes_len = meta_len_with_prefix - 8
 
-    <<_::binary-size(off + 8), metadata::binary-size(meta_bytes_len), body::binary-size(body_len),
-      _rest::binary>> = binary
+    <<_::binary-size(off), marker::little-32, _meta_len::little-signed-32,
+      metadata::binary-size(meta_bytes_len), body::binary-size(body_len), _rest::binary>> = binary
+
+    if marker != @continuation do
+      raise ArgumentError,
+            "Block at offset #{off} does not start with the 0xFFFFFFFF continuation " <>
+              "marker; unsupported: legacy (pre-0.15 / V4) file framing, or the Block " <>
+              "offset is corrupt"
+    end
 
     fb_message = Flatbuf.Message.decode_at(metadata, Wire.root_table_pos(metadata))
     {fb_message, body}

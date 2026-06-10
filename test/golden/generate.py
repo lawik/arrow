@@ -121,9 +121,29 @@ def empty():
     write("empty", schema, [batch])
 
 
+def compressed():
+    """LZ4-compressed bodies; this library must reject them as unsupported."""
+    schema = pa.schema([pa.field("i", pa.int64()), pa.field("s", pa.utf8())])
+    batch = pa.record_batch(
+        [
+            pa.array([1, 2, None, 4, 5], type=pa.int64()),
+            pa.array(["aaaa", "bbbb", None, "cccc", "dddd"], type=pa.utf8()),
+        ],
+        schema=schema,
+    )
+    options = pa.ipc.IpcWriteOptions(compression="lz4")
+    with pa.output_stream(os.path.join(HERE, "compressed.stream")) as sink:
+        with pa.ipc.new_stream(sink, schema, options=options) as writer:
+            writer.write_batch(batch)
+    with pa.output_stream(os.path.join(HERE, "compressed.arrow")) as sink:
+        with pa.ipc.new_file(sink, schema, options=options) as writer:
+            writer.write_batch(batch)
+
+
 if __name__ == "__main__":
     primitives()
     nested()
     dictionary()
     empty()
+    compressed()
     print(f"generated with pyarrow {pa.__version__}")
