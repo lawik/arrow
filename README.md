@@ -10,10 +10,10 @@ corpus, with pyarrow-produced golden files in the default test suite.
 {:arrow, "~> 0.1.0"}
 ```
 
-`:flatbuf` is a `:dev`-only path dependency — used once to regenerate
-the metadata codec from the vendored `.fbs` sources. Generated code is
-dependency-free; without a local `flatbuf` checkout, compile and test
-under `MIX_ENV=test`.
+`:flatbuf` is a `:dev`-only path dependency, included only when a local
+checkout exists — used once to regenerate the metadata codec from the
+vendored `.fbs` sources. Generated code is dependency-free; the project
+compiles and tests without it.
 
 ## Use
 
@@ -95,20 +95,13 @@ RecordBatch + DictionaryBatch messages, end-of-stream markers.
 
 ## Limitations
 
-- Little-endian only. The `Schema.endianness` field is decoded but
-  big-endian column buffers will silently misread. Filter the
-  `*-bigendian` arrow-testing fixtures or convert upstream.
-- IPC body compression (`LZ4_FRAME` / `ZSTD`) is unsupported and
-  currently undetected: compressed input is silently misread, not
-  rejected.
+- Little-endian only. Big-endian IPC payloads are rejected on decode.
+- IPC body compression (`LZ4_FRAME` / `ZSTD`) is rejected on decode.
 - Union (sparse + dense), `BinaryView` / `Utf8View`,
-  `ListView` / `LargeListView`, and `RunEndEncoded` are rejected on
-  decode and absent from the data model. `Float16` is also unsupported,
-  but fails with an opaque error after schema decode rather than a
-  clean rejection.
-- The `mix arrow.integration.*` CLI tasks do not pass dictionaries
-  through: dictionary-encoded fixtures produce invalid output via the
-  CLI even though `Arrow.Json` and `Arrow.Ipc.*` support them.
+  `ListView` / `LargeListView`, `RunEndEncoded`, and `Float16` are
+  rejected on decode and absent from the data model.
+- Legacy (pre-0.15 / V4, no continuation marker) IPC files are
+  rejected.
 - Tensor and SparseTensor messages are out of scope for the IPC reader.
 - Delta `DictionaryBatch` messages are rejected.
 - `force_align` and `(vector64)` follow flatbuf's coverage, not ours.

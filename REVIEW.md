@@ -7,6 +7,15 @@ mix tasks/shims, and the project tooling. Method: ran the full gate
 suite, then file-by-file review of all ~4,600 hand-written lines with
 spot-verification against the Arrow columnar/IPC/integration-JSON specs.
 
+> **Status 2026-06-10 (same day, follow-up fixes):** §1, §2, §3, §4,
+> §5, and §6 are resolved; most of §7 too. `mix check` passes end to
+> end in dev on a checkout without `../flatbuf-stable`, and the full
+> conformance corpus stays green (271 tests). Still open, deliberately:
+> the `{:error, exception}` reason surface (§7 — a real API design
+> decision, not a quick fix), the `NaN` comparator limitation
+> (documented), the Elixir `~> 1.19` floor decision, and actually
+> running archery end to end against the C++ reference.
+
 ## Verdict
 
 The core library is in genuinely good shape. The spec-tricky details
@@ -29,7 +38,11 @@ Plus the usual pre-release loose ends (TODO link, empty changelog).
 
 ---
 
-## 1. Broken on a clean checkout (sanity)
+## 1. Broken on a clean checkout (sanity) — FIXED
+
+> Fixed: the flatbuf path dep is now conditional on the directory
+> existing, credo/cspell exclude the generated codec, and the one
+> generated-code dialyzer error is ignored. `mix check` exits 0 in dev.
 
 Every step of the `mix check` alias after `format` currently fails:
 
@@ -61,7 +74,12 @@ were never taught that, so the gates fail anyway. One config pass
 (credo exclude, cspell ignorePath, one dialyzer ignore entry) plus a
 resolvable flatbuf dep would turn `mix check` green.
 
-## 2. High — archery integration tasks drop dictionaries (both directions)
+## 2. High — archery integration tasks drop dictionaries (both directions) — FIXED
+
+> Fixed: both tasks thread the dictionary registry; decode failures now
+> `Mix.raise` with a readable message; invalid CLI switches abort via
+> `OptionParser.parse!`. A task-level round-trip test over the golden
+> dictionary file (test/mix/tasks/integration_tasks_test.exs) pins it.
 
 This defeats the stated purpose of the integration CLI for any
 dictionary fixture, and nothing flags it:
@@ -84,7 +102,12 @@ empty would have caught both. The library-level dictionary path is
 correct; only the task plumbing drops it — which also shows the
 tasks/shims have no test coverage of their own.
 
-## 3. High — silent misreads at the interop boundary
+## 3. High — silent misreads at the interop boundary — FIXED
+
+> Fixed: compressed bodies (one choke point covering stream/file ×
+> RecordBatch/DictionaryBatch), big-endian schemas, and Float16 are all
+> rejected on decode with "unsupported" ArgumentErrors. LZ4-compressed
+> golden fixtures (pyarrow-produced) pin the rejection.
 
 - **Body compression is never inspected.** The generated
   `Flatbuf.RecordBatch` decodes the `compression` field, but no
@@ -110,7 +133,18 @@ tasks/shims have no test coverage of their own.
   clause. Reject `HALF` explicitly at both schema entry points and
   delete the `:float32` mapping.
 
-## 4. Medium — correctness and robustness
+## 4. Medium — correctness and robustness — FIXED
+
+> Fixed, all items: push_buffer enforces declared length (truncates
+> spec-legal padding, raises on undersize); inconsistent zero-length
+> validity/Bool buffers raise instead of synthesizing bitmaps;
+> encode validates every dictionary-encoded field resolves in the
+> registry; the comparator bounds-checks dictionary indices and
+> tolerates permuted/superset dictionaries (values-only comparison,
+> matching the official integration comparator); duplicate mid-stream
+> Schema raises; file Blocks verify the continuation marker (legacy V4
+> rejected). Tests in test/arrow/ipc/hardening_test.exs and
+> test/arrow/hardening_test.exs.
 
 - `lib/arrow/ipc/body.ex:315-319` — `push_buffer` records the declared
   `len` and advances offsets by it, but appends the *whole* binary.
@@ -199,7 +233,12 @@ branch HEAD un-pinned, so conformance results drift with upstream
 skip-lists were still wired — but indistinguishable from a real
 unwiring; test generation is now guarded on a non-empty fixture list.
 
-## 6. Release readiness
+## 6. Release readiness — FIXED (except the Elixir floor decision)
+
+> Fixed: real GitHub link, real v0.1.0 changelog, explicit `:files`
+> in package (verified: 87 KB tarball, corpus excluded), scaffold
+> comments removed, fixtures clone pinned to a revision. Open: whether
+> `elixir: "~> 1.19"` is the intended floor.
 
 - `mix.exs:38` — package link is `https://github.com/TODO/arrow`.
 - `CHANGELOG.md` — "TODO: write changelog".
@@ -214,7 +253,16 @@ unwiring; test generation is now guarded on a non-empty fixture list.
 - Leftover scaffold comments in `deps/0` (`dep_from_hexpm`/
   `dep_from_git`).
 
-## 7. Low / polish
+## 7. Low / polish — mostly FIXED
+
+> Fixed: stale moduledocs, zero-length `unpack_primitive`, the invalid
+> validity example, Decimal typespec/tier note, dead code
+> (`Type.bit_width/1`, Null `array_count`, `dispatch_message`,
+> `precision_string(:half)`), Bool JSON as true/false, FixedSizeBinary
+> writer bounded by length, gunzip consolidated into `Arrow.Json.decode`,
+> `OptionParser.parse!`, and `doctest Arrow` now backed by a real
+> example. Open: the `{:error, exception}` reason surface (deliberate —
+> needs an API design pass, not a patch).
 
 - Stale moduledocs contradicting the code: `lib/arrow/ipc/file.ex:32-39`
   (claims dictionaries written empty + inline schema authoritative;
@@ -257,14 +305,7 @@ unwiring; test generation is now guarded on a non-empty fixture list.
 
 ## Suggested order of attack
 
-1. Fix the two dictionary drops in the integration tasks + add a task-
-   level round-trip test (§2). One line each.
-2. Reject compression, big-endian, and HALF at decode (§3). A few lines
-   each; converts silent corruption into errors.
-3. Un-redden the gates: resolvable flatbuf dep, credo/cspell excludes
-   for generated code, one dialyzer ignore (§1).
-4. ~~Harden the fixture harness and add external golden binaries +
-   malformed-input tests~~ — done, see §5. Remaining from §5: pin
-   `mix arrow.testing.fixtures` to a revision.
-5. Pre-publish pass: GitHub link, changelog, `:files` in package
-   (§6), then the §4/§7 punch list.
+All five steps are done (see the per-section status notes). What
+remains before publishing: decide the Elixir version floor, decide the
+`{:error, reason}` API surface, and run archery end to end against the
+C++ reference implementation.
