@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Lars Wikman
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -22,7 +26,7 @@ copy it into <arrow checkout>/dev/archery/archery/integration/ and wire
 it up per integration/README.md in the Elixir repo.
 
 Requires ARROW_ELIXIR_PATH to point at the Elixir repo root. The bin/
-shims there forward to `mix arrow.integration.*` tasks; run
+shims there forward to the scripts under scripts/; run
 `mix compile` once beforehand so concurrent invocations don't race to
 compile.
 """

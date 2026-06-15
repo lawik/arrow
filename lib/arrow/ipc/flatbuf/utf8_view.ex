@@ -1,5 +1,6 @@
 defmodule Arrow.Ipc.Flatbuf.Utf8View do
-  @moduledoc "Generated from FlatBuffers table Arrow.Ipc.Flatbuf.Utf8View. Do not edit."
+  # Generated from FlatBuffers table Arrow.Ipc.Flatbuf.Utf8View. Do not edit.
+  @moduledoc false
 
   alias Arrow.Ipc.Flatbuf.Wire, as: Wire
 

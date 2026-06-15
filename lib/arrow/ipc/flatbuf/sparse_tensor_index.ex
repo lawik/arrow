@@ -1,5 +1,6 @@
 defmodule Arrow.Ipc.Flatbuf.SparseTensorIndex do
-  @moduledoc "Generated from FlatBuffers union Arrow.Ipc.Flatbuf.SparseTensorIndex. Do not edit."
+  # Generated from FlatBuffers union Arrow.Ipc.Flatbuf.SparseTensorIndex. Do not edit.
+  @moduledoc false
 
   @type t ::
           nil

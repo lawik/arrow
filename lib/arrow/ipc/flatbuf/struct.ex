@@ -1,5 +1,6 @@
 defmodule Arrow.Ipc.Flatbuf.Struct do
-  @moduledoc "Generated from FlatBuffers table Arrow.Ipc.Flatbuf.Struct_. Do not edit."
+  # Generated from FlatBuffers table Arrow.Ipc.Flatbuf.Struct_. Do not edit.
+  @moduledoc false
 
   alias Arrow.Ipc.Flatbuf.Wire, as: Wire
 

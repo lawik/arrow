@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Lars Wikman
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 defmodule Arrow.GoldenTest do
   @moduledoc """
   External ground truth for the always-run suite.

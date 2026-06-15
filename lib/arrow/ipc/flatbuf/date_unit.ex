@@ -1,5 +1,6 @@
 defmodule Arrow.Ipc.Flatbuf.DateUnit do
-  @moduledoc "Generated from FlatBuffers enum Arrow.Ipc.Flatbuf.DateUnit. Do not edit."
+  # Generated from FlatBuffers enum Arrow.Ipc.Flatbuf.DateUnit. Do not edit.
+  @moduledoc false
 
   @type t :: :DAY | :MILLISECOND
 

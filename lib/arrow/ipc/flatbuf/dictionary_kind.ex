@@ -1,5 +1,6 @@
 defmodule Arrow.Ipc.Flatbuf.DictionaryKind do
-  @moduledoc "Generated from FlatBuffers enum Arrow.Ipc.Flatbuf.DictionaryKind. Do not edit."
+  # Generated from FlatBuffers enum Arrow.Ipc.Flatbuf.DictionaryKind. Do not edit.
+  @moduledoc false
 
   @type t :: :DenseArray
 

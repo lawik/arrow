@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Lars Wikman
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 defmodule Arrow.DecodeError do
   @moduledoc """
   Error returned by the decoders (`Arrow.Ipc.Stream.decode/1`,

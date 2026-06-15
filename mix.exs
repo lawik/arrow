@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Lars Wikman
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 defmodule Arrow.MixProject do
   use Mix.Project
 
@@ -36,7 +40,8 @@ defmodule Arrow.MixProject do
       name: :arrow,
       licenses: ["Apache-2.0"],
       links: %{"GitHub" => "https://github.com/lawik/arrow"},
-      files: ~w(lib priv/fbs .formatter.exs mix.exs README.md LICENSE.md CHANGELOG.md)
+      files: ~w(lib priv/fbs .formatter.exs mix.exs README.md
+           LICENSES NOTICE REUSE.toml CHANGELOG.md)
     ]
   end
 

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Lars Wikman
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 defmodule Arrow.Buffer do
   @moduledoc """
   Encoders and decoders between in-memory values and Arrow's raw buffer

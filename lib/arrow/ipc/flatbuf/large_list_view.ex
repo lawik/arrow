@@ -1,5 +1,6 @@
 defmodule Arrow.Ipc.Flatbuf.LargeListView do
-  @moduledoc "Generated from FlatBuffers table Arrow.Ipc.Flatbuf.LargeListView. Do not edit."
+  # Generated from FlatBuffers table Arrow.Ipc.Flatbuf.LargeListView. Do not edit.
+  @moduledoc false
 
   alias Arrow.Ipc.Flatbuf.Wire, as: Wire
 

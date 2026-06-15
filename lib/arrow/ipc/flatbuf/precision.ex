@@ -1,5 +1,6 @@
 defmodule Arrow.Ipc.Flatbuf.Precision do
-  @moduledoc "Generated from FlatBuffers enum Arrow.Ipc.Flatbuf.Precision. Do not edit."
+  # Generated from FlatBuffers enum Arrow.Ipc.Flatbuf.Precision. Do not edit.
+  @moduledoc false
 
   @type t :: :HALF | :SINGLE | :DOUBLE
 

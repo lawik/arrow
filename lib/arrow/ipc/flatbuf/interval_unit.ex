@@ -1,5 +1,6 @@
 defmodule Arrow.Ipc.Flatbuf.IntervalUnit do
-  @moduledoc "Generated from FlatBuffers enum Arrow.Ipc.Flatbuf.IntervalUnit. Do not edit."
+  # Generated from FlatBuffers enum Arrow.Ipc.Flatbuf.IntervalUnit. Do not edit.
+  @moduledoc false
 
   @type t :: :YEAR_MONTH | :DAY_TIME | :MONTH_DAY_NANO
 

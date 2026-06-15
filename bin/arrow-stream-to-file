@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Lars Wikman
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 # Archery integration shim: arrow-stream-to-file
 #
-# Forwards to `mix arrow.integration.stream_to_file`, run from the
+# Forwards to `mix run scripts/stream_to_file.exs`, run from the
 # project root so Mix can find mix.exs. archery's cross-language test
 # runner subprocesses this binary by name.
 
@@ -11,4 +15,4 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 cd "$PROJECT_ROOT"
-exec mix arrow.integration.stream_to_file "$@"
+exec mix run scripts/stream_to_file.exs "$@"

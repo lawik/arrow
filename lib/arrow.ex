@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Lars Wikman
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 defmodule Arrow do
   @moduledoc """
   Pure-Elixir implementation of the [Apache Arrow](https://arrow.apache.org/)

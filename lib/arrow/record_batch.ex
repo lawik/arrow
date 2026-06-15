@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Lars Wikman
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 defmodule Arrow.RecordBatch do
   @moduledoc """
   A batch of columnar data: a schema, a row count, and one column per field.

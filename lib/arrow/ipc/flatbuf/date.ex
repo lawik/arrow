@@ -1,5 +1,6 @@
 defmodule Arrow.Ipc.Flatbuf.Date do
-  @moduledoc "Generated from FlatBuffers table Arrow.Ipc.Flatbuf.Date. Do not edit."
+  # Generated from FlatBuffers table Arrow.Ipc.Flatbuf.Date. Do not edit.
+  @moduledoc false
 
   alias Arrow.Ipc.Flatbuf.Wire, as: Wire
 

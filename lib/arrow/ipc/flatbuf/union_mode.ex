@@ -1,5 +1,6 @@
 defmodule Arrow.Ipc.Flatbuf.UnionMode do
-  @moduledoc "Generated from FlatBuffers enum Arrow.Ipc.Flatbuf.UnionMode. Do not edit."
+  # Generated from FlatBuffers enum Arrow.Ipc.Flatbuf.UnionMode. Do not edit.
+  @moduledoc false
 
   @type t :: :Sparse | :Dense
 

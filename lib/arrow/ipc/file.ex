@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Lars Wikman
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 defmodule Arrow.Ipc.File do
   @moduledoc """
   Encodes and decodes the Arrow IPC **file** format.

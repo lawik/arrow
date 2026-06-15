@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Lars Wikman
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 # Archery integration shim: arrow-json-integration-json
 #
-# Forwards to `mix arrow.integration.arrow_to_json`, run from the
+# Forwards to `mix run scripts/arrow_to_json.exs`, run from the
 # project root so Mix can find mix.exs. archery's cross-language test
 # runner subprocesses this binary by name.
 
@@ -11,4 +15,4 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 cd "$PROJECT_ROOT"
-exec mix arrow.integration.arrow_to_json "$@"
+exec mix run scripts/arrow_to_json.exs "$@"

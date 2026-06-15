@@ -1,5 +1,6 @@
 defmodule Arrow.Ipc.Flatbuf.LargeBinary do
-  @moduledoc "Generated from FlatBuffers table Arrow.Ipc.Flatbuf.LargeBinary. Do not edit."
+  # Generated from FlatBuffers table Arrow.Ipc.Flatbuf.LargeBinary. Do not edit.
+  @moduledoc false
 
   alias Arrow.Ipc.Flatbuf.Wire, as: Wire
 

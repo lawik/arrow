@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Lars Wikman
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 defmodule Arrow.Ipc.Body do
   @moduledoc """
   Encodes and decodes the body bytes of an Arrow IPC RecordBatch.
@@ -14,7 +18,7 @@ defmodule Arrow.Ipc.Body do
 
   This module owns the walking order, the per-type buffer set, and the
   alignment padding. It does not own the FlatBuffers encoding of those
-  descriptors — that's `Arrow.Ipc.Metadata`.
+  descriptors — that's the internal `Ipc.Metadata` module.
 
   ## Per-type buffer layout
 

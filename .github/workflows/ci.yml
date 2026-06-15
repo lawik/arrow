@@ -1,7 +1,12 @@
+# SPDX-FileCopyrightText: 2026 Lars Wikman
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 # CI for arrow.
 #
-# Five jobs:
+# Six jobs:
 #
+#   reuse       — REUSE (SPDX licensing metadata) compliance lint.
 #   lint        — compile (warnings as errors), format, credo, unused
 #                 deps, hex.audit, spellcheck. The `mix check` alias
 #                 minus dialyzer, split into steps for readable failures.
@@ -12,9 +17,9 @@
 #   archery     — upstream `archery integration` driving the bin/ shims
 #                 as producer and consumer against the gold files.
 #
-# ARROW_TESTING_REVISION must match @revision in
-# lib/mix/tasks/arrow.testing.fixtures.ex — bump the cache key when
-# bumping the pin. ARROW_UPSTREAM_REVISION is the apache/arrow commit
+# ARROW_TESTING_REVISION must match REVISION in
+# scripts/fetch_fixtures.sh — bump the cache key when bumping the
+# pin. ARROW_UPSTREAM_REVISION is the apache/arrow commit
 # integration/archery-elixir.patch was verified against (see
 # integration/README.md).
 
@@ -32,6 +37,12 @@ env:
   ARROW_UPSTREAM_REVISION: "ca47cd10b651a8ff5fe44fbb23f7e01dc982a57d"
 
 jobs:
+  reuse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: fsfe/reuse-action@v6
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -119,9 +130,9 @@ jobs:
 
       - run: mix deps.get
 
-      # Idempotent no-op when the cache hits (the task checks the pin).
+      # Idempotent no-op when the cache hits (the script checks the pin).
       - name: Fetch arrow-testing corpus
-        run: MIX_ENV=test mix arrow.testing.fixtures
+        run: ./scripts/fetch_fixtures.sh
 
       - run: mix test --include fixtures
 
@@ -196,7 +207,7 @@ jobs:
       - run: mix compile
 
       - name: Fetch arrow-testing corpus (gold files)
-        run: MIX_ENV=test mix arrow.testing.fixtures
+        run: ./scripts/fetch_fixtures.sh
 
       - name: Set up Python
         uses: actions/setup-python@v6

@@ -1,5 +1,6 @@
 defmodule Arrow.Ipc.Flatbuf.RecordBatch do
-  @moduledoc "Generated from FlatBuffers table Arrow.Ipc.Flatbuf.RecordBatch. Do not edit."
+  # Generated from FlatBuffers table Arrow.Ipc.Flatbuf.RecordBatch. Do not edit.
+  @moduledoc false
 
   alias Arrow.Ipc.Flatbuf.Wire, as: Wire
 

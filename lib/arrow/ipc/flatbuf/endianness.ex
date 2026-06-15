@@ -1,5 +1,6 @@
 defmodule Arrow.Ipc.Flatbuf.Endianness do
-  @moduledoc "Generated from FlatBuffers enum Arrow.Ipc.Flatbuf.Endianness. Do not edit."
+  # Generated from FlatBuffers enum Arrow.Ipc.Flatbuf.Endianness. Do not edit.
+  @moduledoc false
 
   @type t :: :Little | :Big
 

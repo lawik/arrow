@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Lars Wikman
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 defmodule Arrow.Ipc.FileFixturesTest do
   @moduledoc """
   Cross-language conformance for the Arrow IPC file format.
@@ -38,7 +42,7 @@ defmodule Arrow.Ipc.FileFixturesTest do
       flunk("""
       `--include fixtures` was given, but no file fixtures were found under
       #{@fixtures_root}.
-      Run `mix arrow.testing.fixtures` to populate it.
+      Run `scripts/fetch_fixtures.sh` to populate it.
       """)
     end
   else

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Lars Wikman
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 defmodule Arrow.Array.Null do
   @moduledoc "All-null column. Carries only a length."
   @enforce_keys [:length]

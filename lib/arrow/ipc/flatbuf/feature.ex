@@ -1,5 +1,6 @@
 defmodule Arrow.Ipc.Flatbuf.Feature do
-  @moduledoc "Generated from FlatBuffers enum Arrow.Ipc.Flatbuf.Feature. Do not edit."
+  # Generated from FlatBuffers enum Arrow.Ipc.Flatbuf.Feature. Do not edit.
+  @moduledoc false
 
   @type t :: :UNUSED | :DICTIONARY_REPLACEMENT | :COMPRESSED_BODY
 

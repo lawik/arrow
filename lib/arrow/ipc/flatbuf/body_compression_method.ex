@@ -1,5 +1,6 @@
 defmodule Arrow.Ipc.Flatbuf.BodyCompressionMethod do
-  @moduledoc "Generated from FlatBuffers enum Arrow.Ipc.Flatbuf.BodyCompressionMethod. Do not edit."
+  # Generated from FlatBuffers enum Arrow.Ipc.Flatbuf.BodyCompressionMethod. Do not edit.
+  @moduledoc false
 
   @type t :: :BUFFER
 

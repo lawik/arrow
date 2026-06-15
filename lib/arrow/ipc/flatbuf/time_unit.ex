@@ -1,5 +1,6 @@
 defmodule Arrow.Ipc.Flatbuf.TimeUnit do
-  @moduledoc "Generated from FlatBuffers enum Arrow.Ipc.Flatbuf.TimeUnit. Do not edit."
+  # Generated from FlatBuffers enum Arrow.Ipc.Flatbuf.TimeUnit. Do not edit.
+  @moduledoc false
 
   @type t :: :SECOND | :MILLISECOND | :MICROSECOND | :NANOSECOND
 

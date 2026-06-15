@@ -1,3 +1,8 @@
+<!--
+  SPDX-FileCopyrightText: 2026 Lars Wikman
+  SPDX-License-Identifier: Apache-2.0
+-->
+
 # arrow
 
 Pure-Elixir [Apache Arrow](https://arrow.apache.org/). Verified
@@ -13,7 +18,13 @@ corpus, with pyarrow-produced golden files in the default test suite.
 `:flatbuf` is a `:dev`-only dependency (tracking
 [lawik/flatbuf](https://github.com/lawik/flatbuf) main) — used once to
 regenerate the metadata codec from the vendored `.fbs` sources.
-Generated code is dependency-free.
+Generated code is dependency-free. After regenerating, re-apply
+`@moduledoc false` to the generated modules (they are internal and kept
+out of the docs):
+
+```sh
+perl -i -pe 's{^(\s*)\@moduledoc ".*"$}{$1\@moduledoc false}' lib/arrow/ipc/flatbuf/*.ex
+```
 
 ## Use
 
@@ -65,12 +76,20 @@ Null-aware logical equality across formats and producers:
 Arrow.Logical.payloads_equivalent?(from_stream, from_json)
 ```
 
-Archery integration CLI (subprocess shims under `bin/`):
+Mix tasks for poking at IPC data from the command line:
 
 ```sh
-mix arrow.integration.json_to_arrow --json fixture.json --arrow out.arrow
-mix arrow.integration.arrow_to_json --arrow file.arrow --json out.json
-mix arrow.integration.validate     --json fixture.json --arrow file.arrow
+mix arrow.inspect data.arrow             # schema, batch row counts, dictionaries
+mix arrow.convert data.arrow out.stream  # file ↔ stream, input auto-detected
+```
+
+Archery integration CLI (subprocess shims under `bin/`, forwarding to
+repo-only scripts under `scripts/` — not part of the Hex package):
+
+```sh
+mix run scripts/json_to_arrow.exs --json fixture.json --arrow out.arrow
+mix run scripts/arrow_to_json.exs --arrow file.arrow --json out.json
+mix run scripts/validate.exs --json fixture.json --arrow file.arrow
 ```
 
 Run the tests:
@@ -79,7 +98,7 @@ Run the tests:
 mix test                          # always-run suite, incl. golden decode
                                   # tests against pyarrow-produced IPC
                                   # files (test/golden/)
-mix arrow.testing.fixtures        # one-time: clone apache/arrow-testing
+./scripts/fetch_fixtures.sh       # one-time: clone apache/arrow-testing
 mix test --include fixtures       # cross-language conformance suite
 ```
 
@@ -114,4 +133,10 @@ RecordBatch + DictionaryBatch messages, end-of-stream markers.
 
 ## License
 
-Apache-2.0.
+Apache-2.0. This project is [REUSE](https://reuse.software/)-compliant:
+every file carries SPDX licensing information (in-file headers or
+`REUSE.toml`), license texts live in `LICENSES/`, and `NOTICE` carries
+the attribution for the FlatBuffers schemas vendored from
+[apache/arrow](https://github.com/apache/arrow). `reuse spdx` generates
+an SPDX bill of materials. Not affiliated with the Apache Software
+Foundation.

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Lars Wikman
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 defmodule Arrow.Json.Writer do
   @moduledoc """
   Emits Arrow integration test JSON form from in-memory `Arrow.Schema` and

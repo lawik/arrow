@@ -1,3 +1,8 @@
+<!--
+  SPDX-FileCopyrightText: 2026 Lars Wikman
+  SPDX-License-Identifier: Apache-2.0
+-->
+
 # archery integration
 
 Runbook for running Apache Arrow's `archery integration`
@@ -7,15 +12,15 @@ consumer.
 ## How it plugs in
 
 archery subprocesses the shims in `bin/`, which forward to the
-`mix arrow.integration.*` tasks:
+scripts under `scripts/` via `mix run`:
 
-| shim | task |
+| shim | script |
 |---|---|
-| `bin/arrow-json-integration-arrow` | `arrow.integration.json_to_arrow` |
-| `bin/arrow-json-integration-json` | `arrow.integration.arrow_to_json` |
-| `bin/arrow-json-integration-validate` | `arrow.integration.validate` |
-| `bin/arrow-file-to-stream` | `arrow.integration.file_to_stream` |
-| `bin/arrow-stream-to-file` | `arrow.integration.stream_to_file` |
+| `bin/arrow-json-integration-arrow` | `scripts/json_to_arrow.exs` |
+| `bin/arrow-json-integration-json` | `scripts/arrow_to_json.exs` |
+| `bin/arrow-json-integration-validate` | `scripts/validate.exs` |
+| `bin/arrow-file-to-stream` | `scripts/file_to_stream.exs` |
+| `bin/arrow-stream-to-file` | `scripts/stream_to_file.exs` |
 
 `integration/tester_elixir.py` is the archery tester class (canonical
 copy; it gets copied into the archery checkout).

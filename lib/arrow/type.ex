@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Lars Wikman
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 defmodule Arrow.Type.Null do
   @moduledoc "Logical Null type. Carries no data — only a length."
   defstruct []
@@ -293,7 +297,7 @@ defmodule Arrow.Type do
   def primitive_array_mod(%Decimal{bit_width: 256}), do: Arrow.Array.Decimal256
 
   @doc """
-  Returns the `Arrow.Buffer.primitive_kind/0` atom for the primitive
+  Returns the `t:Arrow.Buffer.primitive_kind/0` atom for the primitive
   type's values buffer.
   """
   @spec primitive_kind(t()) :: Arrow.Buffer.primitive_kind()

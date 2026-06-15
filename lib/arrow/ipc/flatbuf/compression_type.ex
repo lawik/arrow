@@ -1,5 +1,6 @@
 defmodule Arrow.Ipc.Flatbuf.CompressionType do
-  @moduledoc "Generated from FlatBuffers enum Arrow.Ipc.Flatbuf.CompressionType. Do not edit."
+  # Generated from FlatBuffers enum Arrow.Ipc.Flatbuf.CompressionType. Do not edit.
+  @moduledoc false
 
   @type t :: :LZ4_FRAME | :ZSTD
 

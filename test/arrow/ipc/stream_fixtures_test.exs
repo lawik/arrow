@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Lars Wikman
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 defmodule Arrow.Ipc.StreamFixturesTest do
   @moduledoc """
   Cross-language conformance via the `arrow-testing` `.stream` fixtures.
@@ -51,7 +55,7 @@ defmodule Arrow.Ipc.StreamFixturesTest do
       flunk("""
       `--include fixtures` was given, but no fixtures were found under
       #{@fixtures_root}.
-      Run `mix arrow.testing.fixtures` to populate it.
+      Run `scripts/fetch_fixtures.sh` to populate it.
       """)
     end
   else

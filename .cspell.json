@@ -24,7 +24,8 @@
     "test",
     "REVIEW.md",
     "lib/arrow/ipc/flatbuf",
-    "integration/archery-elixir.patch"
+    "integration/archery-elixir.patch",
+    "LICENSES"
   ],
   "words": [
     "bigendian",

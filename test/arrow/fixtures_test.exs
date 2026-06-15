@@ -1,9 +1,13 @@
+# SPDX-FileCopyrightText: 2026 Lars Wikman
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 defmodule Arrow.FixturesTest do
   @moduledoc """
   Round-trips every JSON integration fixture in `priv/arrow-testing/`.
 
   These tests are tagged `:fixtures` and excluded from the default `mix test`
-  run. Populate the fixtures first with `mix arrow.testing.fixtures`, then run:
+  run. Populate the fixtures first with `scripts/fetch_fixtures.sh`, then run:
 
       mix test --include fixtures
 
@@ -37,7 +41,7 @@ defmodule Arrow.FixturesTest do
       flunk("""
       `--include fixtures` was given, but no fixtures were found at
       #{@fixtures_root}.
-      Run `mix arrow.testing.fixtures` to populate it.
+      Run `scripts/fetch_fixtures.sh` to populate it.
       """)
     end
   else

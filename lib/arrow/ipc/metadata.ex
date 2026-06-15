@@ -1,28 +1,32 @@
+# SPDX-FileCopyrightText: 2026 Lars Wikman
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 defmodule Arrow.Ipc.Metadata do
-  @moduledoc """
-  Boundary between Arrow's in-memory data model and the FlatBuffers-encoded
-  metadata used by the IPC stream / file formats.
-
-  Arrow's IPC framing carries metadata (schema, record-batch descriptors,
-  dictionary-batch descriptors, message envelopes, file footers) as
-  FlatBuffers. This module is the only place that knows how to translate
-  between our `Arrow.Schema` / `Arrow.Field` / `Arrow.Type.*` and the
-  generated `Arrow.Ipc.Flatbuf.*` structs.
-
-  ## Current coverage
-
-  - `encode_schema/1` and `decode_schema/1` — the Schema FlatBuffers root.
-    Covers every Tier 1 + Tier 2 logical type plus `LargeUtf8`,
-    `LargeBinary`, `LargeList`, and `Interval`. The remaining variants
-    (`LargeListView`, `ListView`, `BinaryView`, `Utf8View`,
-    `RunEndEncoded`, `Union`, and `Float16`) raise `Arrow.DecodeError`
-    (kind `:unsupported`) until they're added to `Arrow.Type.*`.
-  - Dictionary-encoded fields round-trip through
-    `Arrow.Field.dictionary` / `Arrow.Type.DictionaryEncoding`.
-  - `encode_record_batch/1` and `decode_record_batch/3` cover the
-    RecordBatch metadata table; the Message envelope and stream framing
-    live in `Arrow.Ipc.Stream`.
-  """
+  # Boundary between Arrow's in-memory data model and the FlatBuffers-encoded
+  # metadata used by the IPC stream / file formats.
+  #
+  # Arrow's IPC framing carries metadata (schema, record-batch descriptors,
+  # dictionary-batch descriptors, message envelopes, file footers) as
+  # FlatBuffers. This module is the only place that knows how to translate
+  # between our Arrow.Schema / Arrow.Field / Arrow.Type.* and the generated
+  # Arrow.Ipc.Flatbuf.* structs. Internal: exposed for Arrow.Ipc.Stream and
+  # Arrow.Ipc.File, hidden from the docs along with the generated codec.
+  #
+  # Current coverage:
+  #
+  # - encode_schema/1 and decode_schema/1 — the Schema FlatBuffers root.
+  #   Covers every Tier 1 + Tier 2 logical type plus LargeUtf8, LargeBinary,
+  #   LargeList, and Interval. The remaining variants (LargeListView,
+  #   ListView, BinaryView, Utf8View, RunEndEncoded, Union, and Float16)
+  #   raise Arrow.DecodeError (kind :unsupported) until they're added to
+  #   Arrow.Type.*.
+  # - Dictionary-encoded fields round-trip through Arrow.Field.dictionary /
+  #   Arrow.Type.DictionaryEncoding.
+  # - encode_record_batch/1 and decode_record_batch/3 cover the RecordBatch
+  #   metadata table; the Message envelope and stream framing live in
+  #   Arrow.Ipc.Stream.
+  @moduledoc false
 
   alias Arrow.Ipc.{Body, Flatbuf}
   alias Arrow.Ipc.Flatbuf.Wire

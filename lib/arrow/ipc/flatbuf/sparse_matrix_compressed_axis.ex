@@ -1,5 +1,6 @@
 defmodule Arrow.Ipc.Flatbuf.SparseMatrixCompressedAxis do
-  @moduledoc "Generated from FlatBuffers enum Arrow.Ipc.Flatbuf.SparseMatrixCompressedAxis. Do not edit."
+  # Generated from FlatBuffers enum Arrow.Ipc.Flatbuf.SparseMatrixCompressedAxis. Do not edit.
+  @moduledoc false
 
   @type t :: :Row | :Column
 

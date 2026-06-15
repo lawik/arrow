@@ -1,5 +1,6 @@
 defmodule Arrow.Ipc.Flatbuf.Wire do
-  @moduledoc "Generated FlatBuffers wire helper. Do not edit by hand."
+  # Generated FlatBuffers wire helper. Do not edit by hand.
+  @moduledoc false
 
   # ---------------------------------------------------------------------
   # Readers
@@ -202,7 +203,8 @@ defmodule Arrow.Ipc.Flatbuf.Wire do
   # ---------------------------------------------------------------------
 
   defmodule Builder do
-    @moduledoc "FlatBuffers builder state."
+    # FlatBuffers builder state.
+    @moduledoc false
 
     @type t :: %__MODULE__{
             bytes: iolist(),

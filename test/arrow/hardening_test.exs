@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Lars Wikman
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 defmodule Arrow.HardeningTest do
   @moduledoc """
   Regression tests for hardening fixes in the data-model / JSON /

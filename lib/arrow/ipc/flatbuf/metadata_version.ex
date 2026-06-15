@@ -1,5 +1,6 @@
 defmodule Arrow.Ipc.Flatbuf.MetadataVersion do
-  @moduledoc "Generated from FlatBuffers enum Arrow.Ipc.Flatbuf.MetadataVersion. Do not edit."
+  # Generated from FlatBuffers enum Arrow.Ipc.Flatbuf.MetadataVersion. Do not edit.
+  @moduledoc false
 
   @type t :: :V1 | :V2 | :V3 | :V4 | :V5
 

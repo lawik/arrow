@@ -1,5 +1,6 @@
 defmodule Arrow.Ipc.Flatbuf.Type do
-  @moduledoc "Generated from FlatBuffers union Arrow.Ipc.Flatbuf.Type. Do not edit."
+  # Generated from FlatBuffers union Arrow.Ipc.Flatbuf.Type. Do not edit.
+  @moduledoc false
 
   @type t ::
           nil

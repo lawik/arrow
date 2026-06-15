@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Lars Wikman
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 """Regenerates the golden IPC files in this directory with pyarrow.
 
 The .stream / .arrow files committed here are external ground truth for

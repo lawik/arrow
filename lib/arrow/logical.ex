@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Lars Wikman
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 defmodule Arrow.Logical do
   @moduledoc """
   Logical (null-aware) view of `Arrow.Array.*` columns.

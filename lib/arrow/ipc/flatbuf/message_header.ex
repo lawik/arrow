@@ -1,5 +1,6 @@
 defmodule Arrow.Ipc.Flatbuf.MessageHeader do
-  @moduledoc "Generated from FlatBuffers union Arrow.Ipc.Flatbuf.MessageHeader. Do not edit."
+  # Generated from FlatBuffers union Arrow.Ipc.Flatbuf.MessageHeader. Do not edit.
+  @moduledoc false
 
   @type t ::
           nil
