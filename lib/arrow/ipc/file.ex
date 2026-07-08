@@ -275,7 +275,8 @@ defmodule Arrow.Ipc.File do
     meta_bytes_len = meta_len_with_prefix - 8
 
     <<_::binary-size(^off), marker::little-32, _meta_len::little-signed-32,
-      metadata::binary-size(^meta_bytes_len), body::binary-size(^body_len), _rest::binary>> = binary
+      metadata::binary-size(^meta_bytes_len), body::binary-size(^body_len), _rest::binary>> =
+      binary
 
     if marker != @continuation do
       raise Arrow.DecodeError,
