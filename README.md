@@ -15,9 +15,9 @@ corpus, with pyarrow-produced golden files in the default test suite.
 {:arrow, "~> 0.1.0"}
 ```
 
-`:flatbuf` is a `:dev`-only dependency (tracking
-[lawik/flatbuf](https://github.com/lawik/flatbuf) main) — used once to
-regenerate the metadata codec from the vendored `.fbs` sources.
+`:flatbuf` ([lawik/flatbuf](https://github.com/lawik/flatbuf)) is a
+`:dev`-only dependency from Hex, used once to regenerate the metadata
+codec from the vendored `.fbs` sources.
 Generated code is dependency-free. After regenerating, re-apply
 `@moduledoc false` to the generated modules (they are internal and kept
 out of the docs):
