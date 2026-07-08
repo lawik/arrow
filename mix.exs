@@ -87,7 +87,7 @@ defmodule Arrow.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:nstandard, "~> 0.3"},
+      {:nstandard, "~> 0.3", only: [:dev, :test]},
       {:jason, "~> 1.4"},
       {:igniter, "~> 0.6", only: [:dev, :test]},
       {:ex_doc, "~> 0.40", only: [:dev, :test], runtime: false},
