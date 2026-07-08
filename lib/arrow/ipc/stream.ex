@@ -309,11 +309,11 @@ defmodule Arrow.Ipc.Stream do
   end
 
   defp consume_frame(rest, metadata_len, schema, dicts, batches) do
-    <<metadata_padded::binary-size(metadata_len), after_metadata::binary>> = rest
+    <<metadata_padded::binary-size(^metadata_len), after_metadata::binary>> = rest
     fb_message = decode_message_metadata(metadata_padded)
     body_len = fb_message.bodyLength
 
-    <<body::binary-size(body_len), after_body::binary>> = after_metadata
+    <<body::binary-size(^body_len), after_body::binary>> = after_metadata
 
     handle_header(fb_message.header, body, after_body, schema, dicts, batches)
   end

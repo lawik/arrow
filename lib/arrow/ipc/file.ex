@@ -191,16 +191,16 @@ defmodule Arrow.Ipc.File do
     <<@magic, _rest::binary>> = binary
 
     suffix_start = size - byte_size(@magic_suffix)
-    <<_::binary-size(suffix_start), @magic_suffix>> = binary
+    <<_::binary-size(^suffix_start), @magic_suffix>> = binary
 
     footer_length_offset = size - byte_size(@magic_suffix) - 4
 
-    <<_::binary-size(footer_length_offset), footer_length::little-signed-32, _rest::binary>> =
+    <<_::binary-size(^footer_length_offset), footer_length::little-signed-32, _rest::binary>> =
       binary
 
     footer_offset = footer_length_offset - footer_length
 
-    <<_::binary-size(footer_offset), footer_bin::binary-size(footer_length), _rest::binary>> =
+    <<_::binary-size(^footer_offset), footer_bin::binary-size(^footer_length), _rest::binary>> =
       binary
 
     fb_footer = Flatbuf.Footer.decode_at(footer_bin, Wire.root_table_pos(footer_bin))
@@ -274,8 +274,8 @@ defmodule Arrow.Ipc.File do
     body_len = block.bodyLength
     meta_bytes_len = meta_len_with_prefix - 8
 
-    <<_::binary-size(off), marker::little-32, _meta_len::little-signed-32,
-      metadata::binary-size(meta_bytes_len), body::binary-size(body_len), _rest::binary>> = binary
+    <<_::binary-size(^off), marker::little-32, _meta_len::little-signed-32,
+      metadata::binary-size(^meta_bytes_len), body::binary-size(^body_len), _rest::binary>> = binary
 
     if marker != @continuation do
       raise Arrow.DecodeError,

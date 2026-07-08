@@ -95,7 +95,7 @@ defmodule Arrow.Logical do
   def to_list(%Array.Decimal256{} = a, _dicts), do: apply_validity(a, decimal_values(a, 256))
 
   def to_list(%Array.FixedSizeBinary{byte_width: w} = a, _dicts) do
-    chunks = for <<slot::binary-size(w) <- a.values>>, do: slot
+    chunks = for <<slot::binary-size(^w) <- a.values>>, do: slot
     apply_validity(a, chunks)
   end
 

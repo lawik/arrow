@@ -348,7 +348,7 @@ defmodule Arrow.Json.Writer do
     values = binary_part(a.values, 0, a.length * bw)
 
     data =
-      for <<slot::binary-size(bw) <- values>>, do: Base.encode16(slot)
+      for <<slot::binary-size(^bw) <- values>>, do: Base.encode16(slot)
 
     base
     |> Map.put("VALIDITY", validity_list(a.validity, a.length))

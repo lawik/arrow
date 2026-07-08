@@ -37,7 +37,7 @@ defmodule Arrow.Ipc.FileTest do
     bin = IpcFile.encode(schema, [])
     assert <<"ARROW1", 0, 0, _rest::binary>> = bin
     suffix_start = byte_size(bin) - 6
-    assert <<_::binary-size(suffix_start), "ARROW1">> = bin
+    assert <<_::binary-size(^suffix_start), "ARROW1">> = bin
   end
 
   test "empty (schema only) round-trip" do
