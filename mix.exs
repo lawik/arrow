@@ -9,7 +9,7 @@ defmodule Arrow.MixProject do
     [
       app: :arrow,
       version: "0.1.0",
-      elixir: "~> 1.19",
+      elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       name: "Arrow",
@@ -95,7 +95,7 @@ defmodule Arrow.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:spellweaver, "~> 0.1", only: [:dev, :test], runtime: false},
       # Dev-only, used to regenerate the FlatBuffers metadata codec.
-      {:flatbuf, github: "lawik/flatbuf", only: [:dev], runtime: false}
+      {:flatbuf, "~> 0.1.0", only: [:dev], runtime: false}
     ]
   end
 end
